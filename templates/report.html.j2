@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ profile.db_alias }} - Kaynak Tablo Profil Raporu</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+{% if embed_assets %}
+<style>{{ css_content | safe }}</style>
+{% else %}
+<link rel="stylesheet" href="assets/style.css">
+{% endif %}
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Kaynak Tablo Profil Raporu</h1>
+    <div class="meta">
+      {{ profile.db_alias }} ({{ profile.db_name }}) &mdash; {{ profile.host }}
+      &mdash; {{ profile.profiled_at | dateshort }}
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  {% include "partials/db_summary.html.j2" %}
+
+  <!-- Search -->
+  <input type="text" class="search-box" placeholder="Sema veya tablo ara..."
+         data-target="schema-list">
+
+  <!-- Schema List -->
+  <div id="schema-list">
+  {% for schema in profile.schemas %}
+    {% include "partials/schema_summary.html.j2" %}
+  {% endfor %}
+  </div>
+
+</div>
+
+{% if embed_assets %}
+<script>{{ js_content | safe }}</script>
+{% else %}
+<script src="assets/charts.js"></script>
+{% endif %}
+
+<script>
+// Quality grade dagilim verileri
+document.addEventListener('DOMContentLoaded', () => {
+  const gradeData = {{ grade_distribution | tojson | safe }};
+  renderQualityChart('quality-chart', ['A', 'B', 'C', 'D', 'F'],
+    [gradeData.A || 0, gradeData.B || 0, gradeData.C || 0, gradeData.D || 0, gradeData.F || 0]);
+
+  const topTables = {{ top_tables | tojson | safe }};
+  renderRowCountChart('row-count-chart',
+    topTables.map(t => t.name), topTables.map(t => t.rows));
+});
+</script>
+</body>
+</html>

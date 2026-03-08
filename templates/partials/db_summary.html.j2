@@ -1,0 +1,42 @@
+<!-- Database ozet kartlari -->
+<div class="cards">
+  <div class="card">
+    <div class="label">Sema</div>
+    <div class="value">{{ profile.total_schemas }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Tablo</div>
+    <div class="value">{{ profile.total_tables }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Kolon</div>
+    <div class="value">{{ profile.total_columns | numfmt }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Toplam Satir</div>
+    <div class="value">{{ profile.total_rows | numfmt }}</div>
+  </div>
+  <div class="card">
+    <div class="label">Genel Kalite</div>
+    <div class="value">{{ profile.overall_quality_score | pct1 }}%</div>
+    <div class="sub">
+      <span class="badge badge-{{ overall_grade|lower }}">{{ overall_grade }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="cards" style="grid-template-columns: 1fr 1fr;">
+  <div class="card">
+    <div class="label">Kalite Notu Dagilimi</div>
+    <div class="chart-container" style="height:250px">
+      <canvas id="quality-chart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="label">En Buyuk 10 Tablo</div>
+    <div class="chart-container" style="height:250px">
+      <canvas id="row-count-chart"></canvas>
+    </div>
+  </div>
+</div>

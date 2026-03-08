@@ -1,0 +1,173 @@
+/* Profilleme raporu - minimal, bespoke CSS */
+:root {
+  --bg: #fafbfc;
+  --surface: #ffffff;
+  --text: #1a1a2e;
+  --text-muted: #6b7280;
+  --border: #e5e7eb;
+  --primary: #1f4e79;
+  --primary-light: #d9e2f3;
+  --grade-a: #e2efda;
+  --grade-b: #d9e2f3;
+  --grade-c: #fff2cc;
+  --grade-d: #fce4d6;
+  --grade-f: #f4cccc;
+  --accent: #2563eb;
+  --radius: 6px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* Header */
+.header {
+  background: var(--primary);
+  color: #fff;
+  padding: 32px 24px;
+  margin-bottom: 24px;
+  border-radius: var(--radius);
+}
+.header h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.header .meta { font-size: 13px; opacity: 0.8; }
+
+/* Cards */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.card .label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.card .value { font-size: 28px; font-weight: 700; margin-top: 4px; }
+.card .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* Quality badge */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge-a { background: var(--grade-a); color: #2d5016; }
+.badge-b { background: var(--grade-b); color: #1f3a5f; }
+.badge-c { background: var(--grade-c); color: #7c5e00; }
+.badge-d { background: var(--grade-d); color: #7c3500; }
+.badge-f { background: var(--grade-f); color: #7c0000; }
+.badge-na { background: #e5e7eb; color: #6b7280; }
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 13px;
+}
+thead th {
+  background: var(--primary);
+  color: #fff;
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 500;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+thead th:hover { background: #163d5f; }
+tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+tbody tr:hover { background: #f8f9fa; }
+
+/* Null bar */
+.null-bar {
+  display: inline-block;
+  width: 60px;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.null-bar .fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.null-bar .fill.low { background: #22c55e; }
+.null-bar .fill.mid { background: #f59e0b; }
+.null-bar .fill.high { background: #ef4444; }
+
+/* Details/Summary */
+details {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
+details summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+details summary:hover { background: #f8f9fa; }
+details[open] summary { border-bottom: 1px solid var(--border); }
+details .content { padding: 16px; }
+
+/* Chart container */
+.chart-container {
+  position: relative;
+  height: 300px;
+  margin: 16px 0;
+}
+
+/* Search */
+.search-box {
+  width: 100%;
+  max-width: 400px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+.search-box:focus { outline: none; border-color: var(--accent); }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .container { padding: 12px; }
+  .cards { grid-template-columns: repeat(2, 1fr); }
+  table { font-size: 11px; }
+  thead th, tbody td { padding: 6px 8px; }
+}

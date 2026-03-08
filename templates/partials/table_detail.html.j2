@@ -1,0 +1,53 @@
+<!-- Tablo detay -->
+<details id="table-{{ schema.schema_name }}-{{ table.table_name }}" style="margin-top:8px; border-color: #d1d5db;">
+  <summary style="font-size:13px;">
+    <span class="badge badge-{{ table.table_quality_grade|lower|replace('/', '') }}">{{ table.table_quality_grade }}</span>
+    {{ table.table_name }}
+    <span style="color:var(--text-muted); font-size:12px;">
+      ({{ table.row_count | numfmt }} satir, {{ table.column_count }} kolon{% if table.sampled %}, sampled {{ table.sample_percent }}%{% endif %})
+    </span>
+  </summary>
+  <div class="content">
+    <table class="sortable" style="font-size:12px;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Kolon</th>
+          <th>Tip</th>
+          <th>NULL</th>
+          <th>NULL %</th>
+          <th>Distinct</th>
+          <th>Min</th>
+          <th>Max</th>
+          <th>Kalite</th>
+          <th>Bayraklar</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for col in table.columns %}
+        <tr class="filterable"{% if col.is_primary_key %} style="background:var(--grade-a)"{% elif col.is_foreign_key %} style="background:var(--grade-c)"{% endif %}>
+          <td>{{ col.ordinal_position }}</td>
+          <td>
+            <strong>{{ col.column_name }}</strong>
+            {% if col.is_primary_key %}<span style="color:#2d5016;font-size:10px;">PK</span>{% endif %}
+            {% if col.is_foreign_key %}<span style="color:#7c5e00;font-size:10px;">FK</span>{% endif %}
+          </td>
+          <td>{{ col.data_type }}{% if col.max_length %}({{ col.max_length }}){% endif %}</td>
+          <td>
+            <span class="null-bar">
+              <span class="fill {% if col.null_ratio < 0.1 %}low{% elif col.null_ratio < 0.5 %}mid{% else %}high{% endif %}"
+                    style="width:{{ (col.null_ratio * 100)|int }}%"></span>
+            </span>
+          </td>
+          <td>{{ col.null_ratio | pct1 }}%</td>
+          <td>{{ col.distinct_count | numfmt }}</td>
+          <td title="{{ col.min_value or '' }}">{{ (col.min_value or '') | trunc(30) }}</td>
+          <td title="{{ col.max_value or '' }}">{{ (col.max_value or '') | trunc(30) }}</td>
+          <td><span class="badge badge-{{ col.quality_grade|lower|replace('/', '') }}">{{ col.quality_grade }}{% if col.quality_grade != 'N/A' %} {{ col.quality_score | pct0 }}{% endif %}</span></td>
+          <td style="font-size:11px; color:var(--text-muted);">{{ col.quality_flags|join(', ') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>

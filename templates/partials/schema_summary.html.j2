@@ -1,0 +1,48 @@
+<!-- Schema bolumu -->
+<details class="schema-block">
+  <summary>
+    <span class="badge badge-{{ grade_fn(schema.schema_quality_score)|lower }}">
+      {{ grade_fn(schema.schema_quality_score) }}
+    </span>
+    <strong>{{ schema.schema_name }}</strong>
+    <span style="color:var(--text-muted); font-size:13px;">
+      &mdash; {{ schema.table_count }} tablo, {{ schema.total_rows | numfmt }} satir
+    </span>
+  </summary>
+  <div class="content">
+    <table class="sortable">
+      <thead>
+        <tr>
+          <th>Tablo</th>
+          <th>Satir</th>
+          <th>Kolon</th>
+          <th>Kalite</th>
+          <th>Not</th>
+          <th>Sure</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for table in schema.tables %}
+        <tr class="filterable">
+          <td>
+            <a href="#table-{{ schema.schema_name }}-{{ table.table_name }}"
+               style="color:var(--accent); text-decoration:none;">
+              {{ table.table_name }}
+            </a>
+          </td>
+          <td>{{ table.row_count | numfmt }}{% if table.row_count_estimated %} *{% endif %}</td>
+          <td>{{ table.column_count }}</td>
+          <td>{% if table.table_quality_grade != 'N/A' %}{{ table.table_quality_score | pct1 }}%{% else %}-{% endif %}</td>
+          <td><span class="badge badge-{{ table.table_quality_grade|lower|replace('/', '') }}">{{ table.table_quality_grade }}</span></td>
+          <td>{{ table.profile_duration_sec }}s</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Tablo detaylari -->
+    {% for table in schema.tables %}
+    {% include "partials/table_detail.html.j2" %}
+    {% endfor %}
+  </div>
+</details>

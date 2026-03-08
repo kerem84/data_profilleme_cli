@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Profiling output
+output/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment / credentials
+.env
+.env.*
+config.yaml
+!config/config.example.yaml
+!config/config.mock.yaml
+
+# npm
+*.tgz
