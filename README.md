@@ -1,18 +1,19 @@
 # @intellica/data-profiler
 
-Kaynak veritabani tablolarini otomatik profilleme araci. PostgreSQL ve MSSQL veritabanlarina baglanarak tablo ve kolon bazinda kalite analizi yapar, Excel ve HTML raporlari uretir.
+Kaynak veritabani tablolarini otomatik profilleme araci. PostgreSQL, MSSQL ve Oracle veritabanlarina baglanarak tablo ve kolon bazinda kalite analizi yapar, Excel ve HTML raporlari uretir.
 
 ## Ozellikler
 
-- **Coklu DB Destegi**: PostgreSQL ve MSSQL
-- **Interaktif CLI**: Menu tabanli veritabani/sema/tablo secimi
+- **Coklu DB Destegi**: PostgreSQL, MSSQL ve Oracle
+- **Interaktif CLI**: Menu tabanli veritabani/sema/tablo secimi (Tumunu Sec / Manuel Sec)
 - **Kolon Profilleme**: NULL orani, distinct sayisi, min/max, top-N degerler
 - **Numerik Analiz**: Ortalama, standart sapma, percentile, histogram, outlier tespiti (IQR)
 - **Pattern Tespiti**: Email, telefon, TC kimlik, UUID, tarih vb. regex desenleri
 - **Kalite Skorlama**: Completeness, uniqueness, consistency, validity boyutlarinda A-F not sistemi
 - **Tablo Boyutu**: Her tablo icin disk boyutu (bytes, KB, MB, GB)
+- **PK/FK Tespiti**: Primary key ve foreign key iliskileri metadata'dan cikarilir
 - **Raporlama**: Excel (.xlsx) ve HTML (Chart.js grafikleri dahil)
-- **Guvenli**: Read-only session (PG), WITH NOLOCK (MSSQL), statement timeout, connection pool limiti
+- **Guvenli**: Read-only session (PG), WITH NOLOCK (MSSQL), SET TRANSACTION READ ONLY (Oracle), statement timeout, connection pool limiti
 
 ## Kurulum
 
@@ -21,6 +22,8 @@ npm install -g @intellica/data-profiler
 ```
 
 **Gereksinimler**: Node.js >= 18
+
+> Oracle baglantisi icin Oracle Client kurulumu **gerekmez** — `oracledb` thin mode ile calisir.
 
 ## Hizli Baslangic
 
@@ -38,6 +41,7 @@ project:
   output_dir: "./output"
 
 databases:
+  # PostgreSQL
   my_pg:
     db_type: "postgresql"
     host: "localhost"
@@ -49,6 +53,7 @@ databases:
     statement_timeout: 300000
     schema_filter: "*"            # "*" = tum semalar, veya ["public", "sales"]
 
+  # MSSQL
   my_mssql:
     db_type: "mssql"
     host: "192.168.1.100"
@@ -59,6 +64,19 @@ databases:
     connect_timeout: 15
     statement_timeout: 300000
     schema_filter: "*"
+
+  # Oracle
+  my_oracle:
+    db_type: "oracle"
+    host: "192.168.1.200"
+    port: 1521
+    dbname: "ORCL"              # SID (service_name yoksa kullanilir)
+    service_name: "ORCLPDB"     # Service name (tercih edilir)
+    user: "user"
+    password: "pass"
+    connect_timeout: 15
+    statement_timeout: 300000
+    schema_filter: "*"          # Oracle'da owner = schema
 
 profiling:
   top_n_values: 20
@@ -123,6 +141,20 @@ output/
   profil.log                          # Islem logu
 ```
 
+## Desteklenen Veritabanlari
+
+| Ozellik | PostgreSQL | MSSQL | Oracle |
+|---|---|---|---|
+| Baglanti | `pg` (Pool) | `mssql` (tedious) | `oracledb` (thin) |
+| Read-only | `SET SESSION READ ONLY` | `READ_UNCOMMITTED` + `NOLOCK` | `SET TRANSACTION READ ONLY` |
+| Schema discovery | `information_schema` | `sys.schemas` | `ALL_TABLES` (owner) |
+| PK/FK | `pg_constraint` | `sys.foreign_keys` | `ALL_CONSTRAINTS` |
+| Tablo boyutu | `pg_total_relation_size()` | `sys.allocation_units` | `DBA_SEGMENTS` / `USER_SEGMENTS` |
+| Percentile | `PERCENTILE_CONT` | `PERCENTILE_CONT OVER()` | `PERCENTILE_CONT WITHIN GROUP` |
+| Pattern | regex `~` | `PATINDEX` / `LIKE` | `REGEXP_LIKE` |
+| Row limit | `LIMIT` | `TOP(n)` | `FETCH FIRST n ROWS ONLY` |
+| Identifier quoting | `"name"` | `[name]` | `"name"` |
+
 ## Kalite Skorlama
 
 Her kolon 4 boyutta degerlendirilir:
@@ -138,18 +170,14 @@ Her kolon 4 boyutta degerlendirilir:
 
 ## Docker ile Test
 
-`mock_db/` dizininde test icin PostgreSQL ve MSSQL container'lari mevcuttur:
+`mock_db/` dizininde test icin PostgreSQL, MSSQL ve Oracle container'lari mevcuttur:
 
 ```bash
 cd mock_db
-docker compose up -d postgres mssql
+docker compose up -d
 ```
 
-Seed data yukle:
-```bash
-docker exec mock_postgres psql -U testuser -d mockdb -c "SELECT 1"
-docker exec mock_mssql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Test1234!" -C -Q "SELECT 1"
-```
+> Oracle XE ilk acilista 2-3 dakika surebilir.
 
 Mock config ile calistir:
 ```bash
@@ -164,8 +192,8 @@ import { createConnector } from '@intellica/data-profiler';
 import { Profiler } from '@intellica/data-profiler';
 
 const config = loadConfig('config.yaml');
-const connector = createConnector(config.databases.my_pg);
-const profiler = new Profiler(config, 'my_pg', connector, './sql');
+const connector = createConnector(config.databases.my_oracle);
+const profiler = new Profiler(config, 'my_oracle', connector, './sql');
 const profile = await profiler.profileDatabase();
 
 console.log(profile.total_tables, profile.total_size_display);

@@ -28,6 +28,18 @@ databases:
     statement_timeout: 300000
     schema_filter: "*"
 
+  mock_oracle:
+    db_type: "oracle"
+    host: "localhost"
+    port: 1521
+    dbname: "XEPDB1"
+    service_name: "XEPDB1"
+    user: "testuser"
+    password: "Test1234!"
+    connect_timeout: 15
+    statement_timeout: 300000
+    schema_filter: ["TESTUSER"]
+
 profiling:
   top_n_values: 20
   sample_threshold: 5000000
