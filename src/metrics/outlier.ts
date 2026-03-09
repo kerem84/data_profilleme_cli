@@ -46,8 +46,12 @@ export class OutlierDetector {
       if (this.dbType === 'mssql') {
         // MSSQL: ? positional params (multiplier x2)
         result = await conn.query(sqlText, [iqrMultiplier, iqrMultiplier]);
+      } else if (this.dbType === 'oracle') {
+        // Oracle: :iqr_multiplier named bind -> inlined
+        const ora = this.sql.oracleParams(sqlText, { iqr_multiplier: iqrMultiplier });
+        result = await conn.query(ora.sql, ora.values);
       } else {
-        // PostgreSQL: %(iqr_multiplier)s -> $1
+        // PostgreSQL: %(iqr_multiplier)s -> inlined
         const pg = this.sql.pgParams(sqlText, { iqr_multiplier: iqrMultiplier });
         result = await conn.query(pg.sql, pg.values);
       }

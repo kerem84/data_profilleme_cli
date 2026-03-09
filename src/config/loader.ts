@@ -46,6 +46,7 @@ export function loadConfig(configPath: string): AppConfig {
       statementTimeout: db.statement_timeout,
       schemaFilter: db.schema_filter,
       driver: db.driver,
+      serviceName: db.service_name,
     };
   }
 

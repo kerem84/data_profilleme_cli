@@ -2,7 +2,7 @@
  * App configuration types.
  */
 
-export type DbType = 'postgresql' | 'mssql';
+export type DbType = 'postgresql' | 'mssql' | 'oracle';
 
 export interface DatabaseConfig {
   alias: string;
@@ -16,6 +16,7 @@ export interface DatabaseConfig {
   statementTimeout: number;
   schemaFilter: string | string[];
   driver: string;
+  serviceName: string;
 }
 
 export interface QualityWeights {

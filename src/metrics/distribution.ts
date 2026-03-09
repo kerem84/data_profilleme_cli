@@ -6,7 +6,7 @@ import type { SqlLoader } from '../sql/loader.js';
 import type { BaseConnector } from '../connectors/base-connector.js';
 import type { DbConnection, TopNValue, HistogramBucket } from '../profiler/types.js';
 
-// Numeric types (PostgreSQL + MSSQL)
+// Numeric types (PostgreSQL + MSSQL + Oracle)
 const NUMERIC_TYPES = new Set([
   // PostgreSQL
   'smallint', 'integer', 'bigint', 'decimal', 'numeric',
@@ -14,6 +14,8 @@ const NUMERIC_TYPES = new Set([
   'int2', 'int4', 'int8', 'float4', 'float8', 'money',
   // MSSQL
   'int', 'tinyint', 'float', 'bit', 'smallmoney',
+  // Oracle
+  'number', 'binary_float', 'binary_double',
 ]);
 
 export function isNumericType(dataType: string): boolean {
@@ -28,10 +30,19 @@ const MSSQL_NON_COMPARABLE = new Set([
   'text', 'ntext', 'image', 'geometry', 'geography', 'xml',
 ]);
 
-/** Check if a column type is non-comparable in MSSQL (skip basic/topN/pattern metrics). */
+/**
+ * Oracle non-comparable types (LOB types that cannot be in ORDER BY/GROUP BY).
+ */
+const ORACLE_NON_COMPARABLE = new Set([
+  'clob', 'nclob', 'blob', 'long', 'long raw', 'bfile',
+]);
+
+/** Check if a column type is non-comparable (skip basic/topN/pattern metrics). */
 export function isNonComparableType(dataType: string, dbType: string): boolean {
-  if (dbType !== 'mssql') return false;
-  return MSSQL_NON_COMPARABLE.has(dataType.toLowerCase());
+  const dt = dataType.toLowerCase();
+  if (dbType === 'mssql') return MSSQL_NON_COMPARABLE.has(dt);
+  if (dbType === 'oracle') return ORACLE_NON_COMPARABLE.has(dt);
+  return false;
 }
 
 export class DistributionMetrics {
@@ -66,8 +77,12 @@ export class DistributionMetrics {
       if (this.dbType === 'mssql') {
         // MSSQL: ? positional -> top_n, total_count
         result = await conn.query(sqlText, [topN, rowCount]);
+      } else if (this.dbType === 'oracle') {
+        // Oracle: :total_count, :top_n named binds -> inlined
+        const ora = this.sql.oracleParams(sqlText, { total_count: rowCount, top_n: topN });
+        result = await conn.query(ora.sql, ora.values);
       } else {
-        // PostgreSQL: %(total_count)s, %(top_n)s -> $1, $2
+        // PostgreSQL: %(total_count)s, %(top_n)s -> inlined
         const pgResult = this.sql.pgParams(sqlText, { total_count: rowCount, top_n: topN });
         result = await conn.query(pgResult.sql, pgResult.values);
       }

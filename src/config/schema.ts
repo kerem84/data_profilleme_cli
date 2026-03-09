@@ -3,7 +3,7 @@
  */
 import { z } from 'zod';
 
-const dbTypeEnum = z.enum(['postgresql', 'mssql']);
+const dbTypeEnum = z.enum(['postgresql', 'mssql', 'oracle']);
 
 const databaseConfigSchema = z.object({
   db_type: dbTypeEnum.default('postgresql'),
@@ -16,6 +16,7 @@ const databaseConfigSchema = z.object({
   statement_timeout: z.coerce.number().int().positive().default(300000),
   schema_filter: z.union([z.literal('*'), z.array(z.string())]).default('*'),
   driver: z.string().default('ODBC Driver 17 for SQL Server'),
+  service_name: z.string().default(''),
 });
 
 const qualityWeightsSchema = z.object({

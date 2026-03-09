@@ -5,13 +5,15 @@ import { getLogger } from '../utils/logger.js';
 import type { SqlLoader } from '../sql/loader.js';
 import type { DbConnection } from '../profiler/types.js';
 
-// String types (PostgreSQL + MSSQL)
+// String types (PostgreSQL + MSSQL + Oracle)
 const STRING_TYPES = new Set([
   // PostgreSQL
   'character varying', 'varchar', 'character', 'char', 'text',
   'name', 'citext', 'bpchar',
   // MSSQL
   'nvarchar', 'nchar', 'ntext',
+  // Oracle
+  'varchar2', 'nvarchar2', 'clob', 'nclob', 'long',
 ]);
 
 // MSSQL pattern map (LIKE/PATINDEX equivalents of regex)
@@ -25,6 +27,19 @@ const MSSQL_PATTERN_MAP: Record<string, string> = {
   url: "(val LIKE 'http://%' OR val LIKE 'https://%')",
   json_object: "(LEFT(val, 1) = '{' AND RIGHT(val, 1) = '}')",
   numeric_string: "(PATINDEX('%[^0-9.+-]%', val) = 0 AND LEN(val) > 0)",
+};
+
+// Oracle REGEXP_LIKE pattern map
+const ORACLE_PATTERN_MAP: Record<string, string> = {
+  email: "REGEXP_LIKE(val, '.+@.+\\..+')",
+  phone_tr: "(REGEXP_LIKE(val, '^\\+90[0-9]{10}$') OR REGEXP_LIKE(val, '^0[0-9]{10}$') OR (LENGTH(val) = 10 AND REGEXP_LIKE(val, '^[0-9]+$')))",
+  tc_kimlik: "(LENGTH(val) = 11 AND SUBSTR(val,1,1) != '0' AND REGEXP_LIKE(val, '^[0-9]+$'))",
+  uuid: "REGEXP_LIKE(val, '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')",
+  iso_date: "REGEXP_LIKE(val, '^[0-9]{4}-[0-9]{2}-[0-9]{2}')",
+  iso_datetime: "REGEXP_LIKE(val, '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}')",
+  url: "(val LIKE 'http://%' OR val LIKE 'https://%')",
+  json_object: "(SUBSTR(val,1,1) = '{' AND SUBSTR(val,-1) = '}')",
+  numeric_string: "(REGEXP_LIKE(val, '^[0-9.+-]+$') AND LENGTH(val) > 0)",
 };
 
 export function isStringType(dataType: string): boolean {
@@ -77,6 +92,18 @@ export class PatternAnalyzer {
           FROM ${quotedSchema}.${quotedTable}
           WHERE ${quotedColumn} IS NOT NULL
         ) sub;
+      `;
+    } else if (this.dbType === 'oracle') {
+      sqlText = `
+        SELECT
+          COUNT(*) AS sample_size,
+          ${patternCases}
+        FROM (
+          SELECT CAST(${quotedColumn} AS VARCHAR2(4000)) AS val
+          FROM ${quotedSchema}.${quotedTable}
+          WHERE ${quotedColumn} IS NOT NULL
+          FETCH FIRST ${this.maxSample} ROWS ONLY
+        ) sub
       `;
     } else {
       sqlText = `
@@ -139,6 +166,7 @@ export class PatternAnalyzer {
 
   private buildPatternCases(): string {
     if (this.dbType === 'mssql') return this.buildMssqlPatternCases();
+    if (this.dbType === 'oracle') return this.buildOraclePatternCases();
     return this.buildPgPatternCases();
   }
 
@@ -155,6 +183,15 @@ export class PatternAnalyzer {
     const cases: string[] = [];
     for (const name of Object.keys(this.patterns)) {
       const expr = MSSQL_PATTERN_MAP[name] ?? '1=0';
+      cases.push(`SUM(CASE WHEN ${expr} THEN 1 ELSE 0 END) AS pattern_${name}`);
+    }
+    return cases.join(',\n                ');
+  }
+
+  private buildOraclePatternCases(): string {
+    const cases: string[] = [];
+    for (const name of Object.keys(this.patterns)) {
+      const expr = ORACLE_PATTERN_MAP[name] ?? '1=0';
       cases.push(`SUM(CASE WHEN ${expr} THEN 1 ELSE 0 END) AS pattern_${name}`);
     }
     return cases.join(',\n                ');

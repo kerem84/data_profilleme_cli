@@ -32,6 +32,19 @@ databases:
   #   statement_timeout: 300000
   #   schema_filter: "*"
 
+  # Oracle ornegi:
+  # fin:
+  #   db_type: "oracle"
+  #   host: "HOSTNAME"
+  #   port: 1521
+  #   dbname: "ORCL"                # SID (service_name yoksa kullanilir)
+  #   service_name: "ORCLPDB"       # Service name (tercih edilir)
+  #   user: "USERNAME"
+  #   password: "PASSWORD"
+  #   connect_timeout: 15
+  #   statement_timeout: 300000
+  #   schema_filter: "*"            # Oracle'da owner = schema
+
 profiling:
   top_n_values: 20
   sample_threshold: 5000000

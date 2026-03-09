@@ -199,6 +199,11 @@ export class Profiler {
       let result;
       if (this.dbConfig.dbType === 'mssql') {
         result = await conn.query(sqlText, [schema]);
+      } else if (this.dbConfig.dbType === 'oracle') {
+        // Oracle: :schema_name -> inlined. Schema validated via discoverSchemas().
+        const safeName = schema.replace(/'/g, "''");
+        const inlined = sqlText.replace(/:schema_name/g, `'${safeName}'`);
+        result = await conn.query(inlined);
       } else {
         // information_schema queries fail with parameterised $1 on complex
         // subqueries (pg cannot infer sql_identifier type).  Schema name is

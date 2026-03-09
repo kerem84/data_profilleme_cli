@@ -46,7 +46,7 @@ export class SqlLoader {
 
   /**
    * Validate and quote SQL identifier.
-   * PostgreSQL: "name", MSSQL: [name]
+   * PostgreSQL/Oracle: "name", MSSQL: [name]
    */
   validateIdentifier(name: string): string {
     if (!IDENTIFIER_RE.test(name)) {
@@ -55,6 +55,22 @@ export class SqlLoader {
       );
     }
     return this.dbType === 'mssql' ? `[${name}]` : `"${name}"`;
+  }
+
+  /**
+   * Convert Oracle :param_name binds — inline all values.
+   * Oracle named binds originate from validated config or internal counters,
+   * so inline substitution is safe.
+   */
+  oracleParams(sql: string, params: Record<string, unknown>): { sql: string; values: unknown[] } {
+    const transformed = sql.replace(/:(\w+)/g, (_match, name: string) => {
+      const val = params[name];
+      if (val == null) return 'NULL';
+      if (typeof val === 'number') return String(val);
+      const safe = String(val).replace(/'/g, "''");
+      return `'${safe}'`;
+    });
+    return { sql: transformed, values: [] };
   }
 
   /**
