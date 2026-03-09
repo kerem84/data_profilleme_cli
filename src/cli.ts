@@ -3,6 +3,7 @@
  */
 import { Command } from 'commander';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { showBanner } from './ui/banner.js';
 import { runInteractive } from './ui/menus.js';
@@ -11,12 +12,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PKG_ROOT = path.resolve(__dirname, '..');
 
+const _require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = _require(path.resolve(PKG_ROOT, 'package.json'));
+
 const program = new Command();
 
 program
   .name('intellica-profiler')
-  .description('Kaynak Tablo Profilleme Araci (PostgreSQL / MSSQL)')
-  .version('1.0.0')
+  .description('Kaynak Tablo Profilleme Araci (PostgreSQL / MSSQL / Oracle)')
+  .version(PKG_VERSION)
   .requiredOption('-c, --config <path>', 'Config YAML dosya yolu')
   .action(async (opts) => {
     showBanner();
