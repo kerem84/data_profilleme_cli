@@ -20,6 +20,7 @@ import type { TableInfo } from '../profiler/types.js';
 /* ------------------------------------------------------------------ */
 
 export async function runInteractive(configPath: string, pkgRoot: string): Promise<void> {
+  installStdinGuard();
   p.intro(chalk.dim('Konfigurasyon yukleniyor...'));
 
   const config = loadAndValidateConfig(configPath);
@@ -49,41 +50,89 @@ function loadAndValidateConfig(configPath: string): AppConfig {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Main menu loop                                                     */
+/*  stdin guard – Windows TTY donma fix'i                              */
+/*                                                                     */
+/*  Windows'ta @clack/prompts her prompt kapanisinda stdin'i pause      */
+/*  edip raw mode'dan cikariyor. Sonraki prompt resume ederek           */
+/*  uv_read_start cagiriyor. N tekrardan sonra libuv'un Windows TTY    */
+/*  handle'i uv_read_start'i sessizce yutup stdin'i donduruyor.        */
+/*                                                                     */
+/*  Cozum: stdin'i bir kez raw+flowing yap, pause/setRawMode(false)/   */
+/*  resume cagrilarini engelle. Boylece uv_read_stop/uv_read_start     */
+/*  dongusu hic calismaz.                                              */
+/* ------------------------------------------------------------------ */
+
+let _guardInstalled = false;
+function installStdinGuard(): void {
+  if (_guardInstalled) return;
+  _guardInstalled = true;
+  const stdin = process.stdin as any;
+
+  const origResume = stdin.resume.bind(stdin);
+  const origSetRaw = stdin.setRawMode?.bind(stdin);
+
+  // stdin'i raw mode'da baslat ve flowing yap
+  if (origSetRaw) origSetRaw(true);
+  origResume();
+
+  // pause() → no-op
+  stdin.pause = function () { return this; };
+
+  // setRawMode(false) → no-op
+  if (origSetRaw) {
+    stdin.setRawMode = function (mode: boolean) {
+      if (!mode) return this;
+      return origSetRaw(true);
+    };
+  }
+
+  // resume() → no-op (zaten flowing)
+  stdin.resume = function () { return this; };
+}
+
+async function resetStdin(): Promise<void> {
+  // Zombie keypress handler'lari temizle.
+  // stdin hep raw+flowing kaliyor (guard sayesinde).
+  process.stdin.removeAllListeners('keypress');
+  await new Promise<void>((r) => setTimeout(r, 10));
+  process.stdin.removeAllListeners('keypress');
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main menu – while loop (recursive degil, stack birikmesin)         */
 /* ------------------------------------------------------------------ */
 
 async function showMainMenu(config: AppConfig, pkgRoot: string): Promise<void> {
-  // Event loop'a onceki prompt'un readline cleanup'ini tamamlamasi icin zaman ver
-  await new Promise<void>((r) => setImmediate(r));
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    await resetStdin();
 
-  const action = await p.select({
-    message: 'Ne yapmak istiyorsunuz?',
-    options: [
-      { value: 'profile', label: 'Veritabani Profille', hint: 'Sema kesfi + profilleme + rapor' },
-      { value: 'report', label: "JSON'dan Rapor Uret", hint: 'Mevcut profil JSON dosyasindan rapor' },
-      { value: 'test', label: 'Baglanti Testi', hint: 'Veritabani baglantilarini test et' },
-      { value: 'exit', label: 'Cikis' },
-    ],
-  });
+    const action = await p.select({
+      message: 'Ne yapmak istiyorsunuz?',
+      options: [
+        { value: 'profile', label: 'Veritabani Profille', hint: 'Sema kesfi + profilleme + rapor' },
+        { value: 'report', label: "JSON'dan Rapor Uret", hint: 'Mevcut profil JSON dosyasindan rapor' },
+        { value: 'test', label: 'Baglanti Testi', hint: 'Veritabani baglantilarini test et' },
+        { value: 'exit', label: 'Cikis' },
+      ],
+    });
+    if (p.isCancel(action)) continue;
 
-  if (p.isCancel(action)) return showMainMenu(config, pkgRoot);
-
-  switch (action) {
-    case 'profile':
-      await profileFlow(config, pkgRoot);
-      break;
-    case 'report':
-      await reportOnlyFlow(config, pkgRoot);
-      break;
-    case 'test':
-      await connectionTestFlow(config);
-      break;
-    case 'exit':
-      p.outro('Gule gule!');
-      process.exit(0);
+    switch (action) {
+      case 'profile':
+        await profileFlow(config, pkgRoot);
+        break;
+      case 'report':
+        await reportOnlyFlow(config, pkgRoot);
+        break;
+      case 'test':
+        await connectionTestFlow(config);
+        break;
+      case 'exit':
+        p.outro('Gule gule!');
+        process.exit(0);
+    }
   }
-
-  return showMainMenu(config, pkgRoot);
 }
 
 /* ------------------------------------------------------------------ */
@@ -106,6 +155,7 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     p.log.info(`Tek veritabani: ${fmtDb(dbKeys[0], db.dbType, db.host, db.port, db.dbname)}`);
     selectedDb = dbKeys[0];
   } else {
+    await resetStdin();
     const chosen = await p.select({
       message: 'Profillenecek veritabanini secin:',
       options: dbKeys.map((key) => {
@@ -145,6 +195,7 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     const failedKeys = selectedDbs.filter((k) => !connectors.has(k));
     p.log.warn(`Baglanti kurulamayan DB'ler: ${failedKeys.join(', ')}`);
 
+    await resetStdin();
     const cont = await p.confirm({
       message: `${connectors.size} basarili baglanti ile devam edilsin mi?`,
     });
@@ -239,6 +290,7 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
   }
 
   // Step 6: Report options
+  await resetStdin();
   const opts = await p.group({
     excel: () =>
       p.confirm({
@@ -294,6 +346,7 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     'Profilleme Ozeti',
   );
 
+  await resetStdin();
   const confirmStart = await p.confirm({
     message: 'Profillemeyi baslat?',
   });
@@ -382,11 +435,13 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
     jsonPaths = chosen.map((f) => path.join(outDir, f));
   } else {
     p.log.warn(`${outDir} dizininde profil JSON bulunamadi.`);
+    await resetStdin();
     const manual = await promptJsonPath();
     if (p.isCancel(manual) || !manual) return;
     jsonPaths = [manual as string];
   }
 
+  await resetStdin();
   const reportOpts = await p.group({
     excel: () =>
       p.confirm({
@@ -399,7 +454,6 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
         initialValue: config.reporting.htmlEnabled,
       }),
   });
-
   if (p.isCancel(reportOpts)) return;
 
   for (const jsonPath of jsonPaths) {
@@ -475,6 +529,8 @@ async function multiSelectWithAll(
   message: string,
   options: Array<{ value: string; label: string; hint?: string }>,
 ): Promise<string[]> {
+  await resetStdin();
+
   if (options.length === 1) {
     p.log.info(`Tek secenek: ${options[0].label}`);
     return [options[0].value];
@@ -487,7 +543,6 @@ async function multiSelectWithAll(
       { value: 'manual' as const, label: 'Manuel Sec' },
     ],
   });
-
   if (p.isCancel(mode)) return [];
 
   if (mode === 'all') {
@@ -496,6 +551,7 @@ async function multiSelectWithAll(
     return allValues;
   }
 
+  await resetStdin();
   const chosen = await p.multiselect({
     message,
     options: options.map((o) => ({ value: o.value, label: o.label, hint: o.hint })),
@@ -515,15 +571,6 @@ async function promptJsonPath(): Promise<string | symbol> {
       return undefined;
     },
   });
-}
-
-function formatFileDate(filePath: string): string {
-  try {
-    const stat = fs.statSync(filePath);
-    return stat.mtime.toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
-  } catch {
-    return '';
-  }
 }
 
 async function destroyConnectors(connectors: Map<string, BaseConnector>): Promise<void> {
