@@ -363,17 +363,45 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void> {
-  const jsonPath = await p.text({
-    message: 'Profil JSON dosya yolu (bos birakirsaniz geri doner):',
-    placeholder: './output/profil_ytp_20260305_120000.json',
-    validate: (val) => {
-      if (!val) return undefined; // bos = geri don
-      if (!fs.existsSync(val)) return 'Dosya bulunamadi.';
-      return undefined;
-    },
-  });
+  // output dizinindeki JSON dosyalarini bul
+  const outDir = path.resolve(config.outputDir);
+  let jsonFiles: string[] = [];
+  if (fs.existsSync(outDir)) {
+    jsonFiles = fs.readdirSync(outDir)
+      .filter((f) => f.startsWith('profil_') && f.endsWith('.json'))
+      .sort()
+      .reverse(); // en yeni en ustte
+  }
 
-  if (p.isCancel(jsonPath) || !jsonPath) return;
+  let jsonPath: string | symbol;
+
+  if (jsonFiles.length > 0) {
+    const options = [
+      ...jsonFiles.map((f) => ({
+        value: path.join(outDir, f),
+        label: f,
+        hint: formatFileDate(path.join(outDir, f)),
+      })),
+      { value: '__manual__', label: 'Yol gir (manuel)', hint: '' },
+    ];
+
+    const chosen = await p.select({
+      message: 'Profil JSON dosyasi secin:',
+      options,
+    });
+    if (p.isCancel(chosen)) return;
+
+    if (chosen === '__manual__') {
+      jsonPath = await promptJsonPath();
+      if (p.isCancel(jsonPath) || !jsonPath) return;
+    } else {
+      jsonPath = chosen as string;
+    }
+  } else {
+    p.log.warn(`${outDir} dizininde profil JSON bulunamadi.`);
+    jsonPath = await promptJsonPath();
+    if (p.isCancel(jsonPath) || !jsonPath) return;
+  }
 
   const reportOpts = await p.group({
     excel: () =>
@@ -489,6 +517,26 @@ async function multiSelectWithAll(
   });
   if (p.isCancel(chosen)) return [];
   return chosen as string[];
+}
+
+async function promptJsonPath(): Promise<string | symbol> {
+  return p.text({
+    message: 'Profil JSON dosya yolu:',
+    validate: (val) => {
+      if (!val) return undefined;
+      if (!fs.existsSync(val)) return `Dosya bulunamadi: ${val}`;
+      return undefined;
+    },
+  });
+}
+
+function formatFileDate(filePath: string): string {
+  try {
+    const stat = fs.statSync(filePath);
+    return stat.mtime.toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return '';
+  }
 }
 
 async function destroyConnectors(connectors: Map<string, BaseConnector>): Promise<void> {
