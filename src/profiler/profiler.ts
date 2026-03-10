@@ -52,7 +52,7 @@ export class Profiler {
     this.profConfig = config.profiling;
   }
 
-  async profileDatabase(): Promise<DatabaseProfile> {
+  async profileDatabase(tableFilter?: Map<string, string[]>): Promise<DatabaseProfile> {
     const logger = getLogger();
     const dbProfile: DatabaseProfile = {
       db_alias: this.dbConfig.alias,
@@ -90,7 +90,11 @@ export class Profiler {
     let totalTables = 0;
     const schemaTables = new Map<string, TableInfo[]>();
     for (const schema of schemas) {
-      const tables = await this.connector.discoverTables(schema);
+      let tables = await this.connector.discoverTables(schema);
+      if (tableFilter?.has(schema)) {
+        const allowed = tableFilter.get(schema)!;
+        tables = tables.filter((t) => allowed.includes(t.table_name));
+      }
       schemaTables.set(schema, tables);
       totalTables += tables.length;
     }
