@@ -37,7 +37,11 @@ export class MssqlConnector extends BaseConnector {
         idleTimeoutMillis: 30000,
       },
     };
-    this.poolPromise = new sql.ConnectionPool(mssqlConfig).connect();
+    const pool = new sql.ConnectionPool(mssqlConfig);
+    // Suppress unhandled 'error' events from tedious on connection timeout.
+    // The error is already surfaced via the rejected connect() promise.
+    pool.on('error', () => {});
+    this.poolPromise = pool.connect();
   }
 
   async withConnection<T>(fn: (conn: DbConnection) => Promise<T>): Promise<T> {
@@ -241,7 +245,11 @@ export class MssqlConnector extends BaseConnector {
   }
 
   async destroy(): Promise<void> {
-    const pool = await this.poolPromise;
-    await pool.close();
+    try {
+      const pool = await this.poolPromise;
+      await pool.close();
+    } catch {
+      // Pool never connected — nothing to close
+    }
   }
 }
