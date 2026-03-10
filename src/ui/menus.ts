@@ -53,11 +53,12 @@ function loadAndValidateConfig(configPath: string): AppConfig {
 /* ------------------------------------------------------------------ */
 
 async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
-  let firstRun = true;
   while (true) {
-    // Ilk calistirma haricinde onceki prompt artiklarina karsi satir boslugu birak
-    if (!firstRun) console.log();
-    firstRun = false;
+    // Clack readline state'ini temizle — onceki prompt'tan kalan raw mode/listener sorunlarini onle
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+    }
 
     const action = await p.select({
       message: 'Ne yapmak istiyorsunuz?',
@@ -69,11 +70,7 @@ async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
       ],
     });
 
-    if (p.isCancel(action)) {
-      // ESC/Ctrl+C — clack'in onceki prompt artiklarina karsi satiri temizle
-      process.stdout.write('\x1B[2K\x1B[1A\x1B[2K\r');
-      continue;
-    }
+    if (p.isCancel(action)) continue;
 
     switch (action) {
       case 'profile':
@@ -89,9 +86,6 @@ async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
         p.outro('Gule gule!');
         process.exit(0);
     }
-
-    // Alt flow donusu — clack readline'in temiz kapanmasi icin kisa bekleme
-    await new Promise((r) => setTimeout(r, 50));
   }
 }
 
