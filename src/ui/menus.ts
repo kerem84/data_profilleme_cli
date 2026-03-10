@@ -65,8 +65,8 @@ async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
     });
 
     if (p.isCancel(action)) {
-      p.outro('Gule gule!');
-      process.exit(0);
+      // ESC/Ctrl+C ana menude — donguye devam et (cikis icin "Cikis" secenegi var)
+      continue;
     }
 
     switch (action) {
