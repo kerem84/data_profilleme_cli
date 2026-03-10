@@ -4,7 +4,7 @@
     <span class="badge badge-{{ table.table_quality_grade|lower|replace('/', '') }}">{{ table.table_quality_grade }}</span>
     {{ table.table_name }}
     <span style="color:var(--text-muted); font-size:12px;">
-      ({{ table.row_count | numfmt }} satir, {{ table.column_count }} kolon{% if table.sampled %}, sampled {{ table.sample_percent }}%{% endif %})
+      ({{ table.row_count | numfmt }} satir{% if table.table_size_display %}, {{ table.table_size_display }}{% endif %}, {{ table.column_count }} kolon{% if table.sampled %}, sampled {{ table.sample_percent }}%{% endif %})
     </span>
   </summary>
   <div class="content">

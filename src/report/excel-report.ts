@@ -86,6 +86,7 @@ export class ExcelReportGenerator {
       ['Toplam Tablo', profile.total_tables],
       ['Toplam Kolon', profile.total_columns],
       ['Toplam Satir', profile.total_rows.toLocaleString('tr-TR')],
+      ['Toplam Boyut', profile.total_size_display || '-'],
       ['Genel Kalite Skoru', `${(profile.overall_quality_score * 100).toFixed(2)}%`],
     ];
     data.forEach(([label, value], i) => {
@@ -100,7 +101,7 @@ export class ExcelReportGenerator {
 
   private writeSchemaSummary(wb: ExcelJS.Workbook, profile: DatabaseProfile): void {
     const ws = wb.addWorksheet('Schema Ozet');
-    const headers = ['Sema', 'Tablo Sayisi', 'Toplam Satir', 'Kalite Skoru', 'Kalite Notu'];
+    const headers = ['Sema', 'Tablo Sayisi', 'Toplam Satir', 'Toplam Boyut', 'Kalite Skoru', 'Kalite Notu'];
     this.applyHeader(ws, headers);
 
     profile.schemas.forEach((schema, i) => {
@@ -108,12 +109,13 @@ export class ExcelReportGenerator {
       ws.getRow(r).getCell(1).value = schema.schema_name;
       ws.getRow(r).getCell(2).value = schema.table_count;
       ws.getRow(r).getCell(3).value = schema.total_rows;
-      ws.getRow(r).getCell(4).value = Math.round(schema.schema_quality_score * 10000) / 10000;
+      ws.getRow(r).getCell(4).value = schema.total_size_display || '-';
+      ws.getRow(r).getCell(5).value = Math.round(schema.schema_quality_score * 10000) / 10000;
       const grade = QualityScorer.grade(schema.schema_quality_score);
-      const gradeCell = ws.getRow(r).getCell(5);
+      const gradeCell = ws.getRow(r).getCell(6);
       gradeCell.value = grade;
       gradeCell.fill = GRADE_FILLS[grade] ?? GRADE_FILLS['F'];
-      for (let c = 1; c <= 5; c++) ws.getRow(r).getCell(c).border = THIN_BORDER;
+      for (let c = 1; c <= 6; c++) ws.getRow(r).getCell(c).border = THIN_BORDER;
     });
     this.autoWidth(ws);
   }
@@ -121,7 +123,7 @@ export class ExcelReportGenerator {
   private writeTableProfile(wb: ExcelJS.Workbook, profile: DatabaseProfile): void {
     const ws = wb.addWorksheet('Tablo Profil');
     const headers = [
-      'Sema', 'Tablo', 'Tip', 'Satir Sayisi', 'Tahmini',
+      'Sema', 'Tablo', 'Tip', 'Satir Sayisi', 'Tahmini', 'Boyut',
       'Kolon Sayisi', 'Sampling', 'Sample %',
       'Kalite Skoru', 'Kalite Notu', 'Sure (sn)',
     ];
@@ -135,15 +137,16 @@ export class ExcelReportGenerator {
         ws.getRow(r).getCell(3).value = table.table_type;
         ws.getRow(r).getCell(4).value = table.row_count;
         ws.getRow(r).getCell(5).value = table.row_count_estimated ? 'Evet' : 'Hayir';
-        ws.getRow(r).getCell(6).value = table.column_count;
-        ws.getRow(r).getCell(7).value = table.sampled ? 'Evet' : 'Hayir';
-        ws.getRow(r).getCell(8).value = table.sample_percent ?? '';
-        ws.getRow(r).getCell(9).value = Math.round(table.table_quality_score * 10000) / 10000;
-        const gradeCell = ws.getRow(r).getCell(10);
+        ws.getRow(r).getCell(6).value = table.table_size_display || '-';
+        ws.getRow(r).getCell(7).value = table.column_count;
+        ws.getRow(r).getCell(8).value = table.sampled ? 'Evet' : 'Hayir';
+        ws.getRow(r).getCell(9).value = table.sample_percent ?? '';
+        ws.getRow(r).getCell(10).value = Math.round(table.table_quality_score * 10000) / 10000;
+        const gradeCell = ws.getRow(r).getCell(11);
         gradeCell.value = table.table_quality_grade;
         gradeCell.fill = GRADE_FILLS[table.table_quality_grade] ?? GRADE_FILLS['F'];
-        ws.getRow(r).getCell(11).value = table.profile_duration_sec;
-        for (let c = 1; c <= 11; c++) ws.getRow(r).getCell(c).border = THIN_BORDER;
+        ws.getRow(r).getCell(12).value = table.profile_duration_sec;
+        for (let c = 1; c <= 12; c++) ws.getRow(r).getCell(c).border = THIN_BORDER;
         r++;
       }
     }
