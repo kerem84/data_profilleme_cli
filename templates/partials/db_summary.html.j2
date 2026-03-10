@@ -16,6 +16,12 @@
     <div class="label">Toplam Satir</div>
     <div class="value">{{ profile.total_rows | numfmt }}</div>
   </div>
+  {% if profile.total_size_display %}
+  <div class="card">
+    <div class="label">Toplam Boyut</div>
+    <div class="value">{{ profile.total_size_display }}</div>
+  </div>
+  {% endif %}
   <div class="card">
     <div class="label">Genel Kalite</div>
     <div class="value">{{ profile.overall_quality_score | pct1 }}%</div>
