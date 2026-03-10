@@ -53,7 +53,12 @@ function loadAndValidateConfig(configPath: string): AppConfig {
 /* ------------------------------------------------------------------ */
 
 async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
+  let firstRun = true;
   while (true) {
+    // Ilk calistirma haricinde onceki prompt artiklarina karsi satir boslugu birak
+    if (!firstRun) console.log();
+    firstRun = false;
+
     const action = await p.select({
       message: 'Ne yapmak istiyorsunuz?',
       options: [
@@ -65,7 +70,8 @@ async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
     });
 
     if (p.isCancel(action)) {
-      // ESC/Ctrl+C ana menude — donguye devam et (cikis icin "Cikis" secenegi var)
+      // ESC/Ctrl+C — clack'in onceki prompt artiklarina karsi satiri temizle
+      process.stdout.write('\x1B[2K\x1B[1A\x1B[2K\r');
       continue;
     }
 
