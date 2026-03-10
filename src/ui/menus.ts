@@ -370,18 +370,16 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
   let jsonPaths: string[] = [];
 
   if (jsonFiles.length > 0) {
-    const shown = jsonFiles.slice(0, 20);
-    const chosen = await p.multiselect({
-      message: `Profil JSON secin: ${C.dim(`(${jsonFiles.length} JSON)`)}`,
-      options: shown.map((f) => ({
+    const shown = jsonFiles.slice(0, 10);
+    const chosen = await multiSelectWithAll(
+      'Rapor uretilecek JSON dosyalari secin:',
+      shown.map((f) => ({
         value: f,
-        label: f,
-        hint: formatFileDate(path.join(outDir, f)),
+        label: f.replace('profil_', '').replace('.json', ''),
       })),
-      required: true,
-    });
-    if (p.isCancel(chosen)) return;
-    jsonPaths = (chosen as string[]).map((f) => path.join(outDir, f));
+    );
+    if (chosen.length === 0) return;
+    jsonPaths = chosen.map((f) => path.join(outDir, f));
   } else {
     p.log.warn(`${outDir} dizininde profil JSON bulunamadi.`);
     const manual = await promptJsonPath();
