@@ -364,16 +364,16 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
 
 async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void> {
   const jsonPath = await p.text({
-    message: 'Profil JSON dosya yolu:',
+    message: 'Profil JSON dosya yolu (bos birakirsaniz geri doner):',
     placeholder: './output/profil_ytp_20260305_120000.json',
     validate: (val) => {
-      if (!val) return 'Dosya yolu gerekli.';
+      if (!val) return undefined; // bos = geri don
       if (!fs.existsSync(val)) return 'Dosya bulunamadi.';
       return undefined;
     },
   });
 
-  if (p.isCancel(jsonPath)) return;
+  if (p.isCancel(jsonPath) || !jsonPath) return;
 
   const reportOpts = await p.group({
     excel: () =>
