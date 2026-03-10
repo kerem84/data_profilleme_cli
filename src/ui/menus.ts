@@ -28,7 +28,7 @@ export async function runInteractive(configPath: string, pkgRoot: string): Promi
   const dbCount = Object.keys(config.databases).length;
   p.log.success(`${C.bold(config.projectName)} - ${dbCount} veritabani tanimli`);
 
-  await mainMenuLoop(config, pkgRoot);
+  await showMainMenu(config, pkgRoot);
 }
 
 /* ------------------------------------------------------------------ */
@@ -52,47 +52,38 @@ function loadAndValidateConfig(configPath: string): AppConfig {
 /*  Main menu loop                                                     */
 /* ------------------------------------------------------------------ */
 
-async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
-  while (true) {
-    // Clack readline/stdin state'ini agresif temizle — Windows'ta
-    // cancel/return sonrasi kalan listener ve raw mode kilitlenmeye sebep oluyor
-    resetStdin();
+async function showMainMenu(config: AppConfig, pkgRoot: string): Promise<void> {
+  // Event loop'a onceki prompt'un readline cleanup'ini tamamlamasi icin zaman ver
+  await new Promise<void>((r) => setImmediate(r));
 
-    const action = await p.select({
-      message: 'Ne yapmak istiyorsunuz?',
-      options: [
-        { value: 'profile', label: 'Veritabani Profille', hint: 'Sema kesfi + profilleme + rapor' },
-        { value: 'report', label: "JSON'dan Rapor Uret", hint: 'Mevcut profil JSON dosyasindan rapor' },
-        { value: 'test', label: 'Baglanti Testi', hint: 'Veritabani baglantilarini test et' },
-        { value: 'exit', label: 'Cikis' },
-      ],
-    });
+  const action = await p.select({
+    message: 'Ne yapmak istiyorsunuz?',
+    options: [
+      { value: 'profile', label: 'Veritabani Profille', hint: 'Sema kesfi + profilleme + rapor' },
+      { value: 'report', label: "JSON'dan Rapor Uret", hint: 'Mevcut profil JSON dosyasindan rapor' },
+      { value: 'test', label: 'Baglanti Testi', hint: 'Veritabani baglantilarini test et' },
+      { value: 'exit', label: 'Cikis' },
+    ],
+  });
 
-    if (p.isCancel(action)) continue;
+  if (p.isCancel(action)) return showMainMenu(config, pkgRoot);
 
-    switch (action) {
-      case 'profile':
-        await profileFlow(config, pkgRoot);
-        break;
-      case 'report':
-        await reportOnlyFlow(config, pkgRoot);
-        break;
-      case 'test':
-        await connectionTestFlow(config);
-        break;
-      case 'exit':
-        p.outro('Gule gule!');
-        process.exit(0);
-    }
+  switch (action) {
+    case 'profile':
+      await profileFlow(config, pkgRoot);
+      break;
+    case 'report':
+      await reportOnlyFlow(config, pkgRoot);
+      break;
+    case 'test':
+      await connectionTestFlow(config);
+      break;
+    case 'exit':
+      p.outro('Gule gule!');
+      process.exit(0);
   }
-}
 
-function resetStdin(): void {
-  if (!process.stdin.isTTY) return;
-  process.stdin.removeAllListeners('keypress');
-  process.stdin.removeAllListeners('data');
-  try { process.stdin.setRawMode(false); } catch {}
-  process.stdin.pause();
+  return showMainMenu(config, pkgRoot);
 }
 
 /* ------------------------------------------------------------------ */
