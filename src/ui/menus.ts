@@ -54,11 +54,9 @@ function loadAndValidateConfig(configPath: string): AppConfig {
 
 async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
   while (true) {
-    // Clack readline state'ini temizle — onceki prompt'tan kalan raw mode/listener sorunlarini onle
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(false);
-      process.stdin.pause();
-    }
+    // Clack readline/stdin state'ini agresif temizle — Windows'ta
+    // cancel/return sonrasi kalan listener ve raw mode kilitlenmeye sebep oluyor
+    resetStdin();
 
     const action = await p.select({
       message: 'Ne yapmak istiyorsunuz?',
@@ -87,6 +85,14 @@ async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
         process.exit(0);
     }
   }
+}
+
+function resetStdin(): void {
+  if (!process.stdin.isTTY) return;
+  process.stdin.removeAllListeners('keypress');
+  process.stdin.removeAllListeners('data');
+  try { process.stdin.setRawMode(false); } catch {}
+  process.stdin.pause();
 }
 
 /* ------------------------------------------------------------------ */
@@ -370,36 +376,26 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
       .reverse(); // en yeni en ustte
   }
 
-  let jsonPath: string | symbol;
+  let jsonPaths: string[] = [];
 
   if (jsonFiles.length > 0) {
-    // En son 15 dosyayi goster (cok fazla olursa terminal yavaslar)
-    const shown = jsonFiles.slice(0, 15);
-    const options: Array<{ value: string; label: string; hint: string }> = [
-      ...shown.map((f) => ({
+    const shown = jsonFiles.slice(0, 20);
+    const chosen = await p.multiselect({
+      message: `Profil JSON secin: ${C.dim(`(${jsonFiles.length} JSON)`)}`,
+      options: shown.map((f) => ({
         value: f,
         label: f,
         hint: formatFileDate(path.join(outDir, f)),
       })),
-      { value: '__manual__', label: 'Yol gir (manuel)', hint: '' },
-    ];
-
-    const chosen = await p.select({
-      message: `Profil JSON dosyasi secin: ${C.dim(`(${jsonFiles.length} JSON)`)}`,
-      options,
+      required: true,
     });
     if (p.isCancel(chosen)) return;
-
-    if (chosen === '__manual__') {
-      jsonPath = await promptJsonPath();
-      if (p.isCancel(jsonPath) || !jsonPath) return;
-    } else {
-      jsonPath = path.join(outDir, chosen as string);
-    }
+    jsonPaths = (chosen as string[]).map((f) => path.join(outDir, f));
   } else {
     p.log.warn(`${outDir} dizininde profil JSON bulunamadi.`);
-    jsonPath = await promptJsonPath();
-    if (p.isCancel(jsonPath) || !jsonPath) return;
+    const manual = await promptJsonPath();
+    if (p.isCancel(manual) || !manual) return;
+    jsonPaths = [manual as string];
   }
 
   const reportOpts = await p.group({
@@ -417,20 +413,23 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
 
   if (p.isCancel(reportOpts)) return;
 
-  const s = p.spinner();
-  s.start('JSON okunuyor ve raporlar uretiliyor...');
+  for (const jsonPath of jsonPaths) {
+    const fileName = path.basename(jsonPath);
+    const s = p.spinner();
+    s.start(`Rapor uretiliyor: ${fileName}`);
 
-  try {
-    const data = JSON.parse(fs.readFileSync(jsonPath as string, 'utf-8'));
-    const profile = dictToProfile(data);
-    annotateWithMapping(config, profile);
-    generateReports(config, profile, !reportOpts.excel, !reportOpts.html, pkgRoot);
-    s.stop('Raporlar uretildi.');
-    p.note(`Cikti: ${config.outputDir}`, 'Tamamlandi');
-  } catch (e) {
-    s.stop('Hata olustu!');
-    p.log.error(`Rapor uretme hatasi: ${e}`);
+    try {
+      const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      const profile = dictToProfile(data);
+      annotateWithMapping(config, profile);
+      generateReports(config, profile, !reportOpts.excel, !reportOpts.html, pkgRoot);
+      s.stop(`${SYM.ok} ${fileName}`);
+    } catch (e) {
+      s.stop(`${SYM.fail} ${fileName}: ${e}`);
+    }
   }
+
+  p.note(`${jsonPaths.length} rapor uretildi\nCikti: ${config.outputDir}`, 'Tamamlandi');
 }
 
 /* ------------------------------------------------------------------ */
