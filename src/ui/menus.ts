@@ -20,6 +20,7 @@ import type { TableInfo } from '../profiler/types.js';
 /* ------------------------------------------------------------------ */
 
 export async function runInteractive(configPath: string, pkgRoot: string): Promise<void> {
+  installStdinGuard();
   p.intro(chalk.dim('Konfigurasyon yukleniyor...'));
 
   const config = loadAndValidateConfig(configPath);
@@ -28,7 +29,7 @@ export async function runInteractive(configPath: string, pkgRoot: string): Promi
   const dbCount = Object.keys(config.databases).length;
   p.log.success(`${C.bold(config.projectName)} - ${dbCount} veritabani tanimli`);
 
-  await mainMenuLoop(config, pkgRoot);
+  await showMainMenu(config, pkgRoot);
 }
 
 /* ------------------------------------------------------------------ */
@@ -49,15 +50,62 @@ function loadAndValidateConfig(configPath: string): AppConfig {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Main menu loop                                                     */
+/*  stdin guard – Windows TTY donma fix'i                              */
+/*                                                                     */
+/*  Windows'ta @clack/prompts her prompt kapanisinda stdin'i pause      */
+/*  edip raw mode'dan cikariyor. Sonraki prompt resume ederek           */
+/*  uv_read_start cagiriyor. N tekrardan sonra libuv'un Windows TTY    */
+/*  handle'i uv_read_start'i sessizce yutup stdin'i donduruyor.        */
+/*                                                                     */
+/*  Cozum: stdin'i bir kez raw+flowing yap, pause/setRawMode(false)/   */
+/*  resume cagrilarini engelle. Boylece uv_read_stop/uv_read_start     */
+/*  dongusu hic calismaz.                                              */
 /* ------------------------------------------------------------------ */
 
-async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
-  let firstRun = true;
+let _guardInstalled = false;
+function installStdinGuard(): void {
+  if (_guardInstalled) return;
+  _guardInstalled = true;
+  const stdin = process.stdin as any;
+
+  const origResume = stdin.resume.bind(stdin);
+  const origSetRaw = stdin.setRawMode?.bind(stdin);
+
+  // stdin'i raw mode'da baslat ve flowing yap
+  if (origSetRaw) origSetRaw(true);
+  origResume();
+
+  // pause() → no-op
+  stdin.pause = function () { return this; };
+
+  // setRawMode(false) → no-op
+  if (origSetRaw) {
+    stdin.setRawMode = function (mode: boolean) {
+      if (!mode) return this;
+      return origSetRaw(true);
+    };
+  }
+
+  // resume() → no-op (zaten flowing)
+  stdin.resume = function () { return this; };
+}
+
+async function resetStdin(): Promise<void> {
+  // Zombie keypress handler'lari temizle.
+  // stdin hep raw+flowing kaliyor (guard sayesinde).
+  process.stdin.removeAllListeners('keypress');
+  await new Promise<void>((r) => setTimeout(r, 10));
+  process.stdin.removeAllListeners('keypress');
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main menu – while loop (recursive degil, stack birikmesin)         */
+/* ------------------------------------------------------------------ */
+
+async function showMainMenu(config: AppConfig, pkgRoot: string): Promise<void> {
+  // eslint-disable-next-line no-constant-condition
   while (true) {
-    // Ilk calistirma haricinde onceki prompt artiklarina karsi satir boslugu birak
-    if (!firstRun) console.log();
-    firstRun = false;
+    await resetStdin();
 
     const action = await p.select({
       message: 'Ne yapmak istiyorsunuz?',
@@ -68,12 +116,7 @@ async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
         { value: 'exit', label: 'Cikis' },
       ],
     });
-
-    if (p.isCancel(action)) {
-      // ESC/Ctrl+C — clack'in onceki prompt artiklarina karsi satiri temizle
-      process.stdout.write('\x1B[2K\x1B[1A\x1B[2K\r');
-      continue;
-    }
+    if (p.isCancel(action)) continue;
 
     switch (action) {
       case 'profile':
@@ -112,6 +155,7 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     p.log.info(`Tek veritabani: ${fmtDb(dbKeys[0], db.dbType, db.host, db.port, db.dbname)}`);
     selectedDb = dbKeys[0];
   } else {
+    await resetStdin();
     const chosen = await p.select({
       message: 'Profillenecek veritabanini secin:',
       options: dbKeys.map((key) => {
@@ -151,6 +195,7 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     const failedKeys = selectedDbs.filter((k) => !connectors.has(k));
     p.log.warn(`Baglanti kurulamayan DB'ler: ${failedKeys.join(', ')}`);
 
+    await resetStdin();
     const cont = await p.confirm({
       message: `${connectors.size} basarili baglanti ile devam edilsin mi?`,
     });
@@ -245,6 +290,7 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
   }
 
   // Step 6: Report options
+  await resetStdin();
   const opts = await p.group({
     excel: () =>
       p.confirm({
@@ -300,6 +346,7 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     'Profilleme Ozeti',
   );
 
+  await resetStdin();
   const confirmStart = await p.confirm({
     message: 'Profillemeyi baslat?',
   });
@@ -373,36 +420,28 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
       .reverse(); // en yeni en ustte
   }
 
-  let jsonPath: string | symbol;
+  let jsonPaths: string[] = [];
 
   if (jsonFiles.length > 0) {
-    const options = [
-      ...jsonFiles.map((f) => ({
-        value: path.join(outDir, f),
-        label: f,
-        hint: formatFileDate(path.join(outDir, f)),
+    const shown = jsonFiles.slice(0, 10);
+    const chosen = await multiSelectWithAll(
+      'Rapor uretilecek JSON dosyalari secin:',
+      shown.map((f) => ({
+        value: f,
+        label: f.replace('profil_', '').replace('.json', ''),
       })),
-      { value: '__manual__', label: 'Yol gir (manuel)', hint: '' },
-    ];
-
-    const chosen = await p.select({
-      message: 'Profil JSON dosyasi secin:',
-      options,
-    });
-    if (p.isCancel(chosen)) return;
-
-    if (chosen === '__manual__') {
-      jsonPath = await promptJsonPath();
-      if (p.isCancel(jsonPath) || !jsonPath) return;
-    } else {
-      jsonPath = chosen as string;
-    }
+    );
+    if (chosen.length === 0) return;
+    jsonPaths = chosen.map((f) => path.join(outDir, f));
   } else {
     p.log.warn(`${outDir} dizininde profil JSON bulunamadi.`);
-    jsonPath = await promptJsonPath();
-    if (p.isCancel(jsonPath) || !jsonPath) return;
+    await resetStdin();
+    const manual = await promptJsonPath();
+    if (p.isCancel(manual) || !manual) return;
+    jsonPaths = [manual as string];
   }
 
+  await resetStdin();
   const reportOpts = await p.group({
     excel: () =>
       p.confirm({
@@ -415,23 +454,25 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
         initialValue: config.reporting.htmlEnabled,
       }),
   });
-
   if (p.isCancel(reportOpts)) return;
 
-  const s = p.spinner();
-  s.start('JSON okunuyor ve raporlar uretiliyor...');
+  for (const jsonPath of jsonPaths) {
+    const fileName = path.basename(jsonPath);
+    const s = p.spinner();
+    s.start(`Rapor uretiliyor: ${fileName}`);
 
-  try {
-    const data = JSON.parse(fs.readFileSync(jsonPath as string, 'utf-8'));
-    const profile = dictToProfile(data);
-    annotateWithMapping(config, profile);
-    generateReports(config, profile, !reportOpts.excel, !reportOpts.html, pkgRoot);
-    s.stop('Raporlar uretildi.');
-    p.note(`Cikti: ${config.outputDir}`, 'Tamamlandi');
-  } catch (e) {
-    s.stop('Hata olustu!');
-    p.log.error(`Rapor uretme hatasi: ${e}`);
+    try {
+      const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      const profile = dictToProfile(data);
+      annotateWithMapping(config, profile);
+      generateReports(config, profile, !reportOpts.excel, !reportOpts.html, pkgRoot);
+      s.stop(`${SYM.ok} ${fileName}`);
+    } catch (e) {
+      s.stop(`${SYM.fail} ${fileName}: ${e}`);
+    }
   }
+
+  p.note(`${jsonPaths.length} rapor uretildi\nCikti: ${config.outputDir}`, 'Tamamlandi');
 }
 
 /* ------------------------------------------------------------------ */
@@ -488,6 +529,8 @@ async function multiSelectWithAll(
   message: string,
   options: Array<{ value: string; label: string; hint?: string }>,
 ): Promise<string[]> {
+  await resetStdin();
+
   if (options.length === 1) {
     p.log.info(`Tek secenek: ${options[0].label}`);
     return [options[0].value];
@@ -500,7 +543,6 @@ async function multiSelectWithAll(
       { value: 'manual' as const, label: 'Manuel Sec' },
     ],
   });
-
   if (p.isCancel(mode)) return [];
 
   if (mode === 'all') {
@@ -509,6 +551,7 @@ async function multiSelectWithAll(
     return allValues;
   }
 
+  await resetStdin();
   const chosen = await p.multiselect({
     message,
     options: options.map((o) => ({ value: o.value, label: o.label, hint: o.hint })),
@@ -528,15 +571,6 @@ async function promptJsonPath(): Promise<string | symbol> {
       return undefined;
     },
   });
-}
-
-function formatFileDate(filePath: string): string {
-  try {
-    const stat = fs.statSync(filePath);
-    return stat.mtime.toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
-  } catch {
-    return '';
-  }
 }
 
 async function destroyConnectors(connectors: Map<string, BaseConnector>): Promise<void> {
