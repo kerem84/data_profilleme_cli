@@ -99,22 +99,24 @@ interface SchemaInfo {
 async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
   const dbKeys = Object.keys(config.databases);
 
-  // Step 1: Select databases
-  let selectedDbs: string[];
+  // Step 1: Select database (single)
+  let selectedDb: string;
   if (dbKeys.length === 1) {
     const db = config.databases[dbKeys[0]];
     p.log.info(`Tek veritabani: ${fmtDb(dbKeys[0], db.dbType, db.host, db.port, db.dbname)}`);
-    selectedDbs = dbKeys;
+    selectedDb = dbKeys[0];
   } else {
-    selectedDbs = await multiSelectWithAll(
-      'Profillenecek veritabanlarini secin:',
-      dbKeys.map((key) => {
+    const chosen = await p.select({
+      message: 'Profillenecek veritabanini secin:',
+      options: dbKeys.map((key) => {
         const db = config.databases[key];
         return { value: key, label: fmtDb(key, db.dbType, db.host, db.port, db.dbname) };
       }),
-    );
-    if (selectedDbs.length === 0) return;
+    });
+    if (p.isCancel(chosen)) return;
+    selectedDb = chosen as string;
   }
+  const selectedDbs = [selectedDb];
 
   // Step 2: Test connections
   const connectors = new Map<string, BaseConnector>();
@@ -205,7 +207,38 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     return;
   }
 
-  // Step 5: Report options
+  // Step 5: Select tables per schema
+  const selectedTables = new Map<string, Map<string, string[]>>();
+
+  for (const [key, schemas] of selectedSchemas) {
+    const schemaInfos = dbSchemas.get(key) ?? [];
+    const tableMap = new Map<string, string[]>();
+
+    for (const schemaName of schemas) {
+      const si = schemaInfos.find((s) => s.name === schemaName);
+      if (!si || si.tables.length === 0) continue;
+
+      const chosenTables = await multiSelectWithAll(
+        `[${C.bold(key)} / ${schemaName}] Profillenecek tablolari secin:`,
+        si.tables.map((t) => ({
+          value: t.table_name,
+          label: t.table_name,
+          hint: `${t.table_type} ~${fmtRows(t.estimated_rows)} satir`,
+        })),
+      );
+
+      if (chosenTables.length === 0) {
+        await destroyConnectors(connectors);
+        return;
+      }
+
+      tableMap.set(schemaName, chosenTables);
+    }
+
+    selectedTables.set(key, tableMap);
+  }
+
+  // Step 6: Report options
   const opts = await p.group({
     excel: () =>
       p.confirm({
@@ -233,14 +266,15 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     setupLogger('debug', config.logFile);
   }
 
-  // Step 6: Summary
+  // Step 7: Summary
   const summaryLines: string[] = [];
   let grandTotalTables = 0;
 
   for (const [key, schemas] of selectedSchemas) {
-    const infos = dbSchemas.get(key) ?? [];
-    const filteredInfos = infos.filter((si) => schemas.includes(si.name));
-    const tableCount = filteredInfos.reduce((sum, si) => sum + si.tables.length, 0);
+    const tableMap = selectedTables.get(key);
+    const tableCount = tableMap
+      ? [...tableMap.values()].reduce((sum, t) => sum + t.length, 0)
+      : 0;
     grandTotalTables += tableCount;
     summaryLines.push(`  ${C.bold(key)}: ${schemas.length} sema, ${tableCount} tablo`);
   }
@@ -269,7 +303,7 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     return;
   }
 
-  // Step 7: Execute profiling
+  // Step 8: Execute profiling
   const logger = getLogger();
   const sqlDir = path.join(pkgRoot, 'sql');
 
@@ -284,7 +318,8 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     logger.info(`=== Profilleme basliyor: ${key} ===`);
 
     const profiler = new Profiler(config, key, connector, sqlDir);
-    const profile = await profiler.profileDatabase();
+    const tableMap = selectedTables.get(key);
+    const profile = await profiler.profileDatabase(tableMap);
 
     // Mapping
     annotateWithMapping(config, profile);
