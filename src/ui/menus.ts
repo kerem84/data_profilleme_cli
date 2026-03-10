@@ -89,6 +89,9 @@ async function mainMenuLoop(config: AppConfig, pkgRoot: string): Promise<void> {
         p.outro('Gule gule!');
         process.exit(0);
     }
+
+    // Alt flow donusu — clack readline'in temiz kapanmasi icin kisa bekleme
+    await new Promise((r) => setTimeout(r, 50));
   }
 }
 
@@ -388,7 +391,7 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
     ];
 
     const chosen = await p.select({
-      message: `Profil JSON dosyasi secin: ${C.dim(`(${jsonFiles.length} dosya)`)}`,
+      message: `Profil JSON dosyasi secin: ${C.dim(`(${jsonFiles.length} JSON)`)}`,
       options,
     });
     if (p.isCancel(chosen)) return;
