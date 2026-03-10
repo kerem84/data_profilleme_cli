@@ -376,9 +376,11 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
   let jsonPath: string | symbol;
 
   if (jsonFiles.length > 0) {
-    const options = [
-      ...jsonFiles.map((f) => ({
-        value: path.join(outDir, f),
+    // En son 15 dosyayi goster (cok fazla olursa terminal yavaslar)
+    const shown = jsonFiles.slice(0, 15);
+    const options: Array<{ value: string; label: string; hint: string }> = [
+      ...shown.map((f) => ({
+        value: f,
         label: f,
         hint: formatFileDate(path.join(outDir, f)),
       })),
@@ -386,7 +388,7 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
     ];
 
     const chosen = await p.select({
-      message: 'Profil JSON dosyasi secin:',
+      message: `Profil JSON dosyasi secin: ${C.dim(`(${jsonFiles.length} dosya)`)}`,
       options,
     });
     if (p.isCancel(chosen)) return;
@@ -395,7 +397,7 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
       jsonPath = await promptJsonPath();
       if (p.isCancel(jsonPath) || !jsonPath) return;
     } else {
-      jsonPath = chosen as string;
+      jsonPath = path.join(outDir, chosen as string);
     }
   } else {
     p.log.warn(`${outDir} dizininde profil JSON bulunamadi.`);
