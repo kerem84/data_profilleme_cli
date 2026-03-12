@@ -17,6 +17,7 @@ export interface DatabaseConfig {
   schemaFilter: string | string[];
   driver: string;
   serviceName: string;
+  poolMax: number;
 }
 
 export interface QualityWeights {
@@ -33,6 +34,7 @@ export interface ProfilingConfig {
   numericPercentiles: number[];
   maxPatternSample: number;
   outlierIqrMultiplier: number;
+  concurrency: number;
   qualityWeights: QualityWeights;
   stringPatterns: Record<string, string>;
 }

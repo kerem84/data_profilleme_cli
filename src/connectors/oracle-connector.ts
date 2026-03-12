@@ -36,7 +36,7 @@ export class OracleConnector extends BaseConnector {
         password: this.config.password,
         connectString: this.buildConnectString(),
         poolMin: 0,
-        poolMax: 3,
+        poolMax: this.config.poolMax,
         poolIncrement: 1,
       });
     }
