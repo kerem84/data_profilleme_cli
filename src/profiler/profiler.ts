@@ -3,6 +3,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import pLimit from 'p-limit';
 import { SingleBar, Presets } from 'cli-progress';
 import { getLogger } from '../utils/logger.js';
 import type { AppConfig, DatabaseConfig } from '../config/types.js';
@@ -141,6 +142,7 @@ export class Profiler {
     pbar: SingleBar,
   ): Promise<SchemaProfile> {
     const logger = getLogger();
+    const concurrency = this.profConfig.concurrency;
     const schemaProf: SchemaProfile = {
       schema_name: schema,
       table_count: tables.length,
@@ -151,31 +153,54 @@ export class Profiler {
       schema_quality_score: 0,
     };
 
-    await this.connector.withConnection(async (conn) => {
-      // Metadata prefetch
-      const metadata = await this.fetchSchemaMetadata(conn, schema);
+    // Prefetch metadata with a single connection
+    const metadata = await this.connector.withConnection(async (conn) => {
+      return this.fetchSchemaMetadata(conn, schema);
+    });
 
-      for (const tableInfo of tables) {
+    // Profile tables in parallel with concurrency limit
+    const limit = pLimit(concurrency);
+    const activeTables = new Set<string>();
+
+    const updatePostfix = () => {
+      const names = [...activeTables];
+      pbar.update({ postfix: names.length > 0 ? names.join(', ') : '' });
+    };
+
+    const tasks = tables.map((tableInfo) =>
+      limit(async () => {
         const tableName = tableInfo.table_name;
         const tableType = tableInfo.table_type;
         const estimated = tableInfo.estimated_rows;
 
-        pbar.update({ postfix: `${schema}.${tableName}` });
+        activeTables.add(tableName);
+        updatePostfix();
 
         try {
-          const tableProf = await this.profileTable(
-            conn, schema, tableName, tableType, estimated, metadata,
-          );
-          schemaProf.tables.push(tableProf);
-          schemaProf.total_rows += tableProf.row_count;
-          schemaProf.total_size_bytes += tableProf.table_size_bytes ?? 0;
+          const tableProf = await this.connector.withConnection(async (conn) => {
+            return this.profileTable(conn, schema, tableName, tableType, estimated, metadata);
+          });
+          return tableProf;
         } catch (e) {
           logger.error(`[${schema}.${tableName}] Tablo profilleme hatasi: ${e}`);
+          return null;
+        } finally {
+          activeTables.delete(tableName);
+          pbar.increment();
+          updatePostfix();
         }
+      }),
+    );
 
-        pbar.increment();
+    const results = await Promise.all(tasks);
+
+    for (const tableProf of results) {
+      if (tableProf) {
+        schemaProf.tables.push(tableProf);
+        schemaProf.total_rows += tableProf.row_count;
+        schemaProf.total_size_bytes += tableProf.table_size_bytes ?? 0;
       }
-    });
+    }
 
     schemaProf.total_size_display = formatSize(schemaProf.total_size_bytes);
 
