@@ -2,6 +2,9 @@
 <details id="table-{{ schema.schema_name }}-{{ table.table_name }}" style="margin-top:8px; border-color: #d1d5db;">
   <summary style="font-size:13px;">
     <span class="badge badge-{{ table.table_quality_grade|lower|replace('/', '') }}">{{ table.table_quality_grade }}</span>
+    {% if table.incremental_status == 'unchanged' %}<span class="badge" style="background:#e0e0e0;color:#555;">Degismedi</span>{% endif %}
+    {% if table.incremental_status == 'changed' %}<span class="badge" style="background:#fff9c4;color:#7c5e00;">Degisti</span>{% endif %}
+    {% if table.incremental_status == 'new' %}<span class="badge" style="background:#c8e6c9;color:#2d5016;">Yeni</span>{% endif %}
     {{ table.table_name }}
     <span style="color:var(--text-muted); font-size:12px;">
       ({{ table.row_count | numfmt }} satir{% if table.table_size_display %}, {{ table.table_size_display }}{% endif %}, {{ table.column_count }} kolon{% if table.sampled %}, sampled {{ table.sample_percent }}%{% endif %})

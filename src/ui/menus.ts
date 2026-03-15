@@ -13,7 +13,7 @@ import { Profiler } from '../profiler/profiler.js';
 import { dictToProfile, annotateWithMapping, generateReports } from '../utils/profile-utils.js';
 import type { AppConfig } from '../config/types.js';
 import type { BaseConnector } from '../connectors/base-connector.js';
-import type { TableInfo } from '../profiler/types.js';
+import type { DatabaseProfile, TableInfo } from '../profiler/types.js';
 
 /* ------------------------------------------------------------------ */
 /*  Top-level entry                                                    */
@@ -318,6 +318,52 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     setupLogger('debug', config.logFile);
   }
 
+  // Step 6b: Incremental mode
+  let baselineProfile: DatabaseProfile | undefined;
+
+  const outDir = path.resolve(config.outputDir);
+  let baselineFiles: string[] = [];
+  if (fs.existsSync(outDir)) {
+    // Filter for JSON files matching the selected DB
+    baselineFiles = fs.readdirSync(outDir)
+      .filter((f) => f.startsWith('profil_') && f.endsWith('.json') &&
+        selectedDbs.some((db) => f.includes(db)))
+      .sort()
+      .reverse();
+  }
+
+  if (baselineFiles.length > 0) {
+    await resetStdin();
+    const useIncremental = await p.confirm({
+      message: `Incremental mod? (sadece degisen tablolari yeniden profille)`,
+      initialValue: false,
+    });
+
+    if (!p.isCancel(useIncremental) && useIncremental) {
+      await resetStdin();
+      const chosen = await p.select({
+        message: 'Karsilastirilacak baseline JSON secin:',
+        options: baselineFiles.slice(0, 10).map((f) => ({
+          value: f,
+          label: f.replace('profil_', '').replace('.json', ''),
+        })),
+      });
+
+      if (!p.isCancel(chosen)) {
+        try {
+          const data = JSON.parse(fs.readFileSync(path.join(outDir, chosen as string), 'utf-8'));
+          baselineProfile = dictToProfile(data);
+          p.log.info(
+            `Baseline yuklendi: ${(chosen as string).replace('.json', '')} — ` +
+            `${baselineProfile.total_tables} tablo, ${new Date(baselineProfile.profiled_at).toLocaleString('tr-TR')}`,
+          );
+        } catch (e) {
+          p.log.warn(`Baseline JSON okunamadi: ${e}`);
+        }
+      }
+    }
+  }
+
   // Step 7: Summary
   const summaryLines: string[] = [];
   let grandTotalTables = 0;
@@ -335,11 +381,16 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
   if (opts.excel) reportTypes.push('Excel');
   if (opts.html) reportTypes.push('HTML');
 
+  const modeLine = baselineProfile
+    ? `Mod: Incremental (baseline: ${new Date(baselineProfile.profiled_at).toLocaleString('tr-TR')})`
+    : `Mod: Tam profilleme`;
+
   p.note(
     [
       `Veritabanlari: ${selectedSchemas.size}`,
       ...summaryLines,
       `Toplam: ${grandTotalTables} tablo`,
+      modeLine,
       `Raporlar: ${reportTypes.join(' + ') || 'Yok'}`,
       `Cikti: ${config.outputDir}`,
     ].join('\n'),
@@ -372,7 +423,7 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
 
     const profiler = new Profiler(config, key, connector, sqlDir);
     const tableMap = selectedTables.get(key);
-    const profile = await profiler.profileDatabase(tableMap);
+    const profile = await profiler.profileDatabase(tableMap, baselineProfile);
 
     // Mapping
     annotateWithMapping(config, profile);
@@ -385,10 +436,13 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
     generateReports(config, profile, !opts.excel, !opts.html, pkgRoot);
 
     const qualityPct = (profile.overall_quality_score * 100).toFixed(1);
+    const incrementalInfo = profile.incremental
+      ? ` (${profile.incremental.tables_changed} degisen, ${profile.incremental.tables_unchanged} degismeyen, ${profile.incremental.tables_new} yeni)`
+      : '';
     p.log.success(
       `${C.bold(key)} tamamlandi: ` +
       `${profile.total_schemas} sema, ${profile.total_tables} tablo, ` +
-      `${profile.total_columns} kolon, kalite: %${qualityPct}`,
+      `${profile.total_columns} kolon, kalite: %${qualityPct}${incrementalInfo}`,
     );
 
     logger.info(
