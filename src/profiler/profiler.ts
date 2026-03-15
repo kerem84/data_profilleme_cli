@@ -17,6 +17,7 @@ import type {
   ColumnProfile,
   DatabaseProfile,
   DbConnection,
+  IncrementalSummary,
   SchemaProfile,
   TableProfile,
   TableInfo,
@@ -52,7 +53,10 @@ export class Profiler {
     this.profConfig = config.profiling;
   }
 
-  async profileDatabase(tableFilter?: Map<string, string[]>): Promise<DatabaseProfile> {
+  async profileDatabase(
+    tableFilter?: Map<string, string[]>,
+    previousProfile?: DatabaseProfile,
+  ): Promise<DatabaseProfile> {
     const logger = getLogger();
     const dbProfile: DatabaseProfile = {
       db_alias: this.dbConfig.alias,
@@ -68,6 +72,17 @@ export class Profiler {
       schemas: [],
       overall_quality_score: 0,
     };
+
+    // Build previous-profile lookup for incremental mode
+    const prevTableMap = new Map<string, TableProfile>();
+    if (previousProfile) {
+      for (const schema of previousProfile.schemas) {
+        for (const table of schema.tables) {
+          prevTableMap.set(`${schema.schema_name}.${table.table_name}`, table);
+        }
+      }
+      logger.info(`[${this.dbConfig.alias}] Incremental mod: ${prevTableMap.size} onceki tablo yuklendi.`);
+    }
 
     if (!(await this.connector.testConnection())) {
       logger.error(`[${this.dbConfig.alias}] Baglanti kurulamadi, profilleme iptal.`);
@@ -109,7 +124,7 @@ export class Profiler {
 
     for (const schema of schemas) {
       const tables = schemaTables.get(schema) ?? [];
-      const schemaProf = await this.profileSchema(schema, tables, pbar);
+      const schemaProf = await this.profileSchema(schema, tables, pbar, prevTableMap);
       dbProfile.schemas.push(schemaProf);
     }
 
@@ -132,6 +147,29 @@ export class Profiler {
         scoredSchemas.reduce((s, sc) => s + sc.schema_quality_score, 0) / scoredSchemas.length;
     }
 
+    // Incremental summary
+    if (previousProfile) {
+      const summary: IncrementalSummary = {
+        enabled: true,
+        baseline_profiled_at: previousProfile.profiled_at,
+        tables_changed: 0,
+        tables_unchanged: 0,
+        tables_new: 0,
+      };
+      for (const schema of dbProfile.schemas) {
+        for (const table of schema.tables) {
+          if (table.incremental_status === 'unchanged') summary.tables_unchanged++;
+          else if (table.incremental_status === 'new') summary.tables_new++;
+          else if (table.incremental_status === 'changed') summary.tables_changed++;
+        }
+      }
+      dbProfile.incremental = summary;
+      logger.info(
+        `[${this.dbConfig.alias}] Incremental sonuc: ` +
+        `${summary.tables_changed} degisen, ${summary.tables_unchanged} degismeyen, ${summary.tables_new} yeni`,
+      );
+    }
+
     return dbProfile;
   }
 
@@ -139,6 +177,7 @@ export class Profiler {
     schema: string,
     tables: TableInfo[],
     pbar: SingleBar,
+    prevTableMap?: Map<string, TableProfile>,
   ): Promise<SchemaProfile> {
     const logger = getLogger();
     const schemaProf: SchemaProfile = {
@@ -159,13 +198,42 @@ export class Profiler {
         const tableName = tableInfo.table_name;
         const tableType = tableInfo.table_type;
         const estimated = tableInfo.estimated_rows;
+        const prevKey = `${schema}.${tableName}`;
 
         pbar.update({ postfix: `${schema}.${tableName}` });
 
         try {
+          // Incremental: check if table changed since baseline
+          if (prevTableMap?.has(prevKey)) {
+            const prev = prevTableMap.get(prevKey)!;
+            const rc = await this.basic.getRowCount(conn, schema, tableName);
+            const colMeta = metadata.get(tableName) ?? [];
+
+            if (rc.row_count === prev.row_count && colMeta.length === prev.column_count) {
+              // Unchanged — carry forward previous profile with updated timestamp
+              const carried: TableProfile = {
+                ...prev,
+                estimated_rows: estimated,
+                incremental_status: 'unchanged',
+              };
+              schemaProf.tables.push(carried);
+              schemaProf.total_rows += carried.row_count;
+              schemaProf.total_size_bytes += carried.table_size_bytes ?? 0;
+              logger.info(`[${prevKey}] Degisiklik yok, onceki profil tasindi.`);
+              pbar.increment();
+              continue;
+            }
+          }
+
           const tableProf = await this.profileTable(
             conn, schema, tableName, tableType, estimated, metadata,
           );
+
+          // Mark incremental status
+          if (prevTableMap) {
+            tableProf.incremental_status = prevTableMap.has(prevKey) ? 'changed' : 'new';
+          }
+
           schemaProf.tables.push(tableProf);
           schemaProf.total_rows += tableProf.row_count;
           schemaProf.total_size_bytes += tableProf.table_size_bytes ?? 0;

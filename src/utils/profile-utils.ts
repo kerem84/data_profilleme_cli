@@ -22,10 +22,11 @@ export function dictToProfile(data: Record<string, unknown>): DatabaseProfile {
         dwh_targets: c.dwh_targets ?? [],
       })),
       dwh_target_tables: t.dwh_target_tables ?? [],
+      incremental_status: t.incremental_status ?? undefined,
     })),
   }));
 
-  return {
+  const profile: DatabaseProfile = {
     db_alias: String(data.db_alias ?? ''),
     db_name: String(data.db_name ?? ''),
     host: String(data.host ?? ''),
@@ -39,6 +40,12 @@ export function dictToProfile(data: Record<string, unknown>): DatabaseProfile {
     schemas,
     overall_quality_score: Number(data.overall_quality_score ?? 0),
   };
+
+  if (data.incremental) {
+    profile.incremental = data.incremental as DatabaseProfile['incremental'];
+  }
+
+  return profile;
 }
 
 /** Apply DWH mapping annotations to a profile. */

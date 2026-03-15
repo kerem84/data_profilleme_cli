@@ -66,6 +66,9 @@ export interface ColumnProfile {
   dwh_targets: string[];
 }
 
+/** Incremental profiling status for a table. */
+export type IncrementalStatus = 'changed' | 'unchanged' | 'new' | 'full';
+
 export interface TableProfile {
   schema_name: string;
   table_name: string;
@@ -85,6 +88,7 @@ export interface TableProfile {
   table_quality_grade: string;
   dwh_mapped: boolean;
   dwh_target_tables: string[];
+  incremental_status?: IncrementalStatus;
 }
 
 export interface SchemaProfile {
@@ -95,6 +99,14 @@ export interface SchemaProfile {
   total_size_display: string;
   tables: TableProfile[];
   schema_quality_score: number;
+}
+
+export interface IncrementalSummary {
+  enabled: boolean;
+  baseline_profiled_at: string;
+  tables_changed: number;
+  tables_unchanged: number;
+  tables_new: number;
 }
 
 export interface DatabaseProfile {
@@ -110,6 +122,7 @@ export interface DatabaseProfile {
   total_size_display: string;
   schemas: SchemaProfile[];
   overall_quality_score: number;
+  incremental?: IncrementalSummary;
 }
 
 /** Format bytes to human-readable size string. */
