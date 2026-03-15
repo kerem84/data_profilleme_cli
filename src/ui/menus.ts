@@ -11,6 +11,9 @@ import { setupLogger, getLogger } from '../utils/logger.js';
 import { createConnector } from '../connectors/factory.js';
 import { Profiler } from '../profiler/profiler.js';
 import { dictToProfile, annotateWithMapping, generateReports } from '../utils/profile-utils.js';
+import { calculateDiff } from '../profiler/diff.js';
+import { DiffExcelReportGenerator } from '../report/diff-excel-report.js';
+import { DiffHtmlReportGenerator } from '../report/diff-html-report.js';
 import type { AppConfig } from '../config/types.js';
 import type { BaseConnector } from '../connectors/base-connector.js';
 import type { TableInfo } from '../profiler/types.js';
@@ -112,6 +115,7 @@ async function showMainMenu(config: AppConfig, pkgRoot: string): Promise<void> {
       options: [
         { value: 'profile', label: 'Veritabani Profille', hint: 'Sema kesfi + profilleme + rapor' },
         { value: 'report', label: "JSON'dan Rapor Uret", hint: 'Mevcut profil JSON dosyasindan rapor' },
+        { value: 'diff', label: 'Profil Karsilastir', hint: 'Iki profil JSON arasindaki farklari goster' },
         { value: 'test', label: 'Baglanti Testi', hint: 'Veritabani baglantilarini test et' },
         { value: 'exit', label: 'Cikis' },
       ],
@@ -124,6 +128,9 @@ async function showMainMenu(config: AppConfig, pkgRoot: string): Promise<void> {
         break;
       case 'report':
         await reportOnlyFlow(config, pkgRoot);
+        break;
+      case 'diff':
+        await diffFlow(config, pkgRoot);
         break;
       case 'test':
         await connectionTestFlow(config);
@@ -473,6 +480,109 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
   }
 
   p.note(`${jsonPaths.length} rapor uretildi\nCikti: ${config.outputDir}`, 'Tamamlandi');
+}
+
+/* ------------------------------------------------------------------ */
+/*  Diff flow                                                          */
+/* ------------------------------------------------------------------ */
+
+async function diffFlow(config: AppConfig, pkgRoot: string): Promise<void> {
+  const outDir = path.resolve(config.outputDir);
+  let jsonFiles: string[] = [];
+  if (fs.existsSync(outDir)) {
+    jsonFiles = fs.readdirSync(outDir)
+      .filter((f) => f.startsWith('profil_') && f.endsWith('.json'))
+      .sort()
+      .reverse();
+  }
+
+  if (jsonFiles.length < 2) {
+    p.log.warn('Karsilastirma icin en az 2 profil JSON dosyasi gerekli.');
+    return;
+  }
+
+  const shown = jsonFiles.slice(0, 15);
+
+  // Select old profile
+  await resetStdin();
+  const oldChosen = await p.select({
+    message: 'Eski (baseline) profil secin:',
+    options: shown.map((f) => ({
+      value: f,
+      label: f.replace('profil_', '').replace('.json', ''),
+    })),
+  });
+  if (p.isCancel(oldChosen)) return;
+
+  // Select new profile (exclude old selection)
+  await resetStdin();
+  const newOptions = shown.filter((f) => f !== oldChosen);
+  const newChosen = await p.select({
+    message: 'Yeni profil secin:',
+    options: newOptions.map((f) => ({
+      value: f,
+      label: f.replace('profil_', '').replace('.json', ''),
+    })),
+  });
+  if (p.isCancel(newChosen)) return;
+
+  // Report options
+  await resetStdin();
+  const reportOpts = await p.group({
+    excel: () => p.confirm({ message: 'Excel diff rapor uretilsin mi?', initialValue: true }),
+    html: () => p.confirm({ message: 'HTML diff rapor uretilsin mi?', initialValue: true }),
+  });
+  if (p.isCancel(reportOpts)) return;
+
+  const s = p.spinner();
+  s.start('Profiller karsilastiriliyor...');
+
+  try {
+    const oldData = JSON.parse(fs.readFileSync(path.join(outDir, oldChosen as string), 'utf-8'));
+    const newData = JSON.parse(fs.readFileSync(path.join(outDir, newChosen as string), 'utf-8'));
+    const oldProfile = dictToProfile(oldData);
+    const newProfile = dictToProfile(newData);
+
+    const diff = calculateDiff(oldProfile, newProfile);
+
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14).replace(/(\d{8})(\d{6})/, '$1_$2');
+    const reports: string[] = [];
+
+    if (reportOpts.excel) {
+      const excelPath = path.join(outDir, `diff_${diff.new_alias}_${timestamp}.xlsx`);
+      const gen = new DiffExcelReportGenerator();
+      await gen.generate(diff, excelPath);
+      reports.push(`Excel: ${excelPath}`);
+    }
+
+    if (reportOpts.html) {
+      const htmlPath = path.join(outDir, `diff_${diff.new_alias}_${timestamp}.html`);
+      const templateDir = path.join(pkgRoot, 'templates');
+      const gen = new DiffHtmlReportGenerator(templateDir, true);
+      gen.generate(diff, htmlPath);
+      reports.push(`HTML:  ${htmlPath}`);
+    }
+
+    s.stop(`${SYM.ok} Karsilastirma tamamlandi`);
+
+    p.note(
+      [
+        `Eski: ${oldChosen}`,
+        `Yeni: ${newChosen}`,
+        '',
+        `Iyilesen: ${diff.summary.tables_improved} tablo`,
+        `Kotulesen: ${diff.summary.tables_degraded} tablo`,
+        `Degismeyen: ${diff.summary.tables_stable} tablo`,
+        `Yeni: ${diff.summary.tables_new} tablo`,
+        `Silinen: ${diff.summary.tables_dropped} tablo`,
+        '',
+        ...reports,
+      ].join('\n'),
+      'Diff Sonucu',
+    );
+  } catch (e) {
+    s.stop(`${SYM.fail} Hata: ${e}`);
+  }
 }
 
 /* ------------------------------------------------------------------ */

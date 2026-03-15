@@ -21,3 +21,7 @@ export { SqlLoader } from './sql/loader.js';
 export { isNumericType } from './metrics/distribution.js';
 export { isStringType } from './metrics/pattern.js';
 export { dictToProfile, annotateWithMapping, generateReports } from './utils/profile-utils.js';
+export { calculateDiff } from './profiler/diff.js';
+export type { DatabaseDiff, TableDiff, ColumnDiff, MetricDiff, DiffStatus } from './profiler/diff.js';
+export { DiffExcelReportGenerator } from './report/diff-excel-report.js';
+export { DiffHtmlReportGenerator } from './report/diff-html-report.js';
