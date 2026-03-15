@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profil Karsilastirma — {{ diff.old_alias }}</title>
+{% if embed_assets and css_content %}
+<style>{{ css_content | safe }}</style>
+{% endif %}
+<style>
+  .diff-improved { background: #c8e6c9; }
+  .diff-degraded { background: #ffcdd2; }
+  .diff-new      { background: #bbdefb; }
+  .diff-dropped  { background: #e0e0e0; text-decoration: line-through; }
+  .diff-stable   { }
+  .delta-pos { color: #2e7d32; font-weight: 600; }
+  .delta-neg { color: #c62828; font-weight: 600; }
+  .delta-zero { color: #757575; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0; }
+  .summary-card { padding: 16px; border-radius: 8px; text-align: center; }
+  .summary-card .num { font-size: 28px; font-weight: 700; }
+  .summary-card .lbl { font-size: 12px; color: var(--text-muted, #666); margin-top: 4px; }
+  .trend-chart { max-width: 100%; height: 300px; margin: 20px 0; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+<div class="container" style="max-width: 1200px; margin: 0 auto; padding: 20px; font-family: system-ui, sans-serif;">
+
+<h1 style="border-bottom: 2px solid #1F4E79; padding-bottom: 8px;">
+  Profil Karsilastirma
+</h1>
+
+<p style="color: var(--text-muted, #666); font-size: 14px;">
+  <strong>Eski:</strong> {{ diff.old_alias }} — {{ diff.old_profiled_at | dateshort }}<br>
+  <strong>Yeni:</strong> {{ diff.new_alias }} — {{ diff.new_profiled_at | dateshort }}
+</p>
+
+<!-- Summary cards -->
+<div class="summary-grid">
+  <div class="summary-card diff-improved">
+    <div class="num">{{ diff.summary.tables_improved }}</div>
+    <div class="lbl">Iyilesen Tablo</div>
+  </div>
+  <div class="summary-card diff-degraded">
+    <div class="num">{{ diff.summary.tables_degraded }}</div>
+    <div class="lbl">Kotulesen Tablo</div>
+  </div>
+  <div class="summary-card" style="background: #f5f5f5;">
+    <div class="num">{{ diff.summary.tables_stable }}</div>
+    <div class="lbl">Degismeyen</div>
+  </div>
+  <div class="summary-card diff-new">
+    <div class="num">{{ diff.summary.tables_new }}</div>
+    <div class="lbl">Yeni Tablo</div>
+  </div>
+  <div class="summary-card diff-dropped">
+    <div class="num">{{ diff.summary.tables_dropped }}</div>
+    <div class="lbl">Silinen Tablo</div>
+  </div>
+</div>
+
+<!-- Overall quality trend -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+  <div style="background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px;">
+    <h3 style="margin-top:0;">Genel Kalite</h3>
+    <table style="width: 100%; font-size: 14px;">
+      <tr><td>Eski</td><td style="text-align:right;"><strong>{{ diff.overall_quality.old | pctval }}</strong></td></tr>
+      <tr><td>Yeni</td><td style="text-align:right;"><strong>{{ diff.overall_quality.new | pctval }}</strong></td></tr>
+      <tr><td>Degisim</td><td style="text-align:right;">
+        <span class="{% if diff.overall_quality.delta > 0 %}delta-pos{% elif diff.overall_quality.delta < 0 %}delta-neg{% else %}delta-zero{% endif %}">
+          {{ diff.overall_quality.delta | deltafmt }}
+        </span>
+      </td></tr>
+    </table>
+  </div>
+  <div style="background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px;">
+    <h3 style="margin-top:0;">Kolon Degisimleri</h3>
+    <table style="width: 100%; font-size: 14px;">
+      <tr><td style="color:#2e7d32;">Iyilesen</td><td style="text-align:right;">{{ diff.summary.columns_improved }}</td></tr>
+      <tr><td style="color:#c62828;">Kotulesen</td><td style="text-align:right;">{{ diff.summary.columns_degraded }}</td></tr>
+      <tr><td style="color:#1565c0;">Yeni</td><td style="text-align:right;">{{ diff.summary.columns_new }}</td></tr>
+      <tr><td style="color:#757575;">Silinen</td><td style="text-align:right;">{{ diff.summary.columns_dropped }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- Quality trend chart -->
+{% if chart_tables | length > 0 %}
+<div style="background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-top: 20px;">
+  <h3 style="margin-top:0;">Tablo Kalite Karsilastirmasi</h3>
+  <div class="trend-chart">
+    <canvas id="qualityTrendChart"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<!-- Table diff -->
+<h2 style="margin-top: 32px;">Tablo Bazli Karsilastirma</h2>
+
+{% for schema in diff.schemas %}
+<h3>{{ schema.schema_name }}</h3>
+<table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:16px;">
+  <thead>
+    <tr style="background:#1F4E79; color:#fff;">
+      <th style="padding:6px 8px; text-align:left;">Tablo</th>
+      <th style="padding:6px 8px;">Durum</th>
+      <th style="padding:6px 8px;">Satir (Eski)</th>
+      <th style="padding:6px 8px;">Satir (Yeni)</th>
+      <th style="padding:6px 8px;">Kalite (Eski)</th>
+      <th style="padding:6px 8px;">Kalite (Yeni)</th>
+      <th style="padding:6px 8px;">Delta</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for table in schema.tables %}
+    <tr class="diff-{{ table.status }}">
+      <td style="padding:4px 8px; border:1px solid #ddd;"><strong>{{ table.table_name }}</strong></td>
+      <td style="padding:4px 8px; border:1px solid #ddd; text-align:center;">
+        {% if table.status == 'improved' %}Iyilesti{% elif table.status == 'degraded' %}Kotulesti{% elif table.status == 'new' %}Yeni{% elif table.status == 'dropped' %}Silindi{% else %}Ayni{% endif %}
+      </td>
+      <td style="padding:4px 8px; border:1px solid #ddd; text-align:right;">{{ table.row_count.old | numfmt if table.row_count.old != None else '-' }}</td>
+      <td style="padding:4px 8px; border:1px solid #ddd; text-align:right;">{{ table.row_count.new | numfmt if table.row_count.new != None else '-' }}</td>
+      <td style="padding:4px 8px; border:1px solid #ddd; text-align:right;">{{ table.quality_score.old | pctval }}</td>
+      <td style="padding:4px 8px; border:1px solid #ddd; text-align:right;">{{ table.quality_score.new | pctval }}</td>
+      <td style="padding:4px 8px; border:1px solid #ddd; text-align:right;">
+        <span class="{% if table.quality_score.delta > 0 %}delta-pos{% elif table.quality_score.delta < 0 %}delta-neg{% else %}delta-zero{% endif %}">
+          {{ table.quality_score.delta | deltafmt }}
+        </span>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% for table in schema.tables %}
+{% if table.columns | length > 0 %}
+<details style="margin-bottom:12px; border:1px solid #ddd; border-radius:4px;">
+  <summary style="padding:8px 12px; font-size:13px; cursor:pointer; background:#f9f9f9;">
+    {{ table.schema_name }}.{{ table.table_name }}
+    — {{ table.columns | length }} kolon
+  </summary>
+  <div style="padding: 0 12px 12px;">
+    <table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">
+      <thead>
+        <tr style="background:#e3f2fd;">
+          <th style="padding:4px 6px; text-align:left;">Kolon</th>
+          <th style="padding:4px 6px;">Tip</th>
+          <th style="padding:4px 6px;">Durum</th>
+          <th style="padding:4px 6px;">NULL% Eski</th>
+          <th style="padding:4px 6px;">NULL% Yeni</th>
+          <th style="padding:4px 6px;">Kalite Eski</th>
+          <th style="padding:4px 6px;">Kalite Yeni</th>
+          <th style="padding:4px 6px;">Not</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for col in table.columns %}
+        <tr class="diff-{{ col.status }}">
+          <td style="padding:3px 6px; border:1px solid #eee;"><strong>{{ col.column_name }}</strong></td>
+          <td style="padding:3px 6px; border:1px solid #eee;">{{ col.data_type }}</td>
+          <td style="padding:3px 6px; border:1px solid #eee; text-align:center;">
+            {% if col.status == 'improved' %}Iyilesti{% elif col.status == 'degraded' %}Kotulesti{% elif col.status == 'new' %}Yeni{% elif col.status == 'dropped' %}Silindi{% else %}Ayni{% endif %}
+          </td>
+          <td style="padding:3px 6px; border:1px solid #eee; text-align:right;">{{ col.null_ratio.old | pctval }}</td>
+          <td style="padding:3px 6px; border:1px solid #eee; text-align:right;">{{ col.null_ratio.new | pctval }}</td>
+          <td style="padding:3px 6px; border:1px solid #eee; text-align:center;">{{ col.old_grade }}</td>
+          <td style="padding:3px 6px; border:1px solid #eee; text-align:center;">{{ col.new_grade }}</td>
+          <td style="padding:3px 6px; border:1px solid #eee;">
+            <span class="{% if col.quality_score.delta > 0 %}delta-pos{% elif col.quality_score.delta < 0 %}delta-neg{% else %}delta-zero{% endif %}">
+              {{ col.quality_score.delta | deltafmt }}
+            </span>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+{% endfor %}
+{% endfor %}
+
+<!-- Chart script -->
+{% if chart_tables | length > 0 %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const data = {{ chart_tables | tojson | safe }};
+  const ctx = document.getElementById('qualityTrendChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.name),
+      datasets: [
+        {
+          label: 'Eski Kalite %',
+          data: data.map(d => d.old),
+          backgroundColor: 'rgba(25, 118, 210, 0.5)',
+          borderColor: 'rgba(25, 118, 210, 1)',
+          borderWidth: 1,
+        },
+        {
+          label: 'Yeni Kalite %',
+          data: data.map(d => d.new),
+          backgroundColor: 'rgba(46, 125, 50, 0.5)',
+          borderColor: 'rgba(46, 125, 50, 1)',
+          borderWidth: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, max: 100, title: { display: true, text: 'Kalite (%)' } },
+        x: { ticks: { maxRotation: 45, minRotation: 45 } },
+      },
+      plugins: {
+        legend: { position: 'top' },
+      },
+    },
+  });
+});
+</script>
+{% endif %}
+
+<footer style="margin-top:40px; padding:12px 0; border-top:1px solid #ddd; font-size:11px; color:#999; text-align:center;">
+  intellica-profiler diff — {{ diff.new_profiled_at | dateshort }}
+</footer>
+
+</div>
+</body>
+</html>
