@@ -16,6 +16,9 @@ const NUMERIC_TYPES = new Set([
   'int', 'tinyint', 'float', 'bit', 'smallmoney',
   // Oracle
   'number', 'binary_float', 'binary_double',
+  // HANA
+  'tinyint', 'smallint', 'integer', 'bigint', 'decimal', 'smalldecimal',
+  'real', 'double', 'float',
 ]);
 
 export function isNumericType(dataType: string): boolean {
@@ -38,10 +41,16 @@ const ORACLE_NON_COMPARABLE = new Set([
 ]);
 
 /** Check if a column type is non-comparable (skip basic/topN/pattern metrics). */
+const HANA_NON_COMPARABLE = new Set([
+  'blob', 'clob', 'nclob', 'text',
+]);
+
+/** Check if a column type is non-comparable (skip basic/topN/pattern metrics). */
 export function isNonComparableType(dataType: string, dbType: string): boolean {
   const dt = dataType.toLowerCase();
   if (dbType === 'mssql') return MSSQL_NON_COMPARABLE.has(dt);
   if (dbType === 'oracle') return ORACLE_NON_COMPARABLE.has(dt);
+  if (dbType === 'hanabw') return HANA_NON_COMPARABLE.has(dt);
   return false;
 }
 

@@ -298,6 +298,14 @@ export class Profiler {
         const safeName = schema.replace(/'/g, "''");
         const inlined = sqlText.replace(/:schema_name/g, `'${safeName}'`);
         result = await conn.query(inlined);
+      } else if (this.dbConfig.dbType === 'hanabw') {
+        // HANA BW: RSDIOBJT always in SAPABAP1 schema, params: [lang_code, schema_name]
+        const { HanaBwConnector } = await import('../connectors/hanabw-connector.js');
+        const connector = this.connector as InstanceType<typeof HanaBwConnector>;
+        const sapLang = connector.getSapLangCode();
+        const rsdiobjSchema = schema.toUpperCase() === 'SAPABAP1' ? schema : 'SAPABAP1';
+        const inlined = sqlText.replace('RSDIOBJT', `"${rsdiobjSchema}".RSDIOBJT`);
+        result = await conn.query(inlined, [sapLang, schema]);
       } else {
         // information_schema queries fail with parameterised $1 on complex
         // subqueries (pg cannot infer sql_identifier type).  Schema name is

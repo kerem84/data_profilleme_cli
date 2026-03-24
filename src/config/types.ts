@@ -2,7 +2,7 @@
  * App configuration types.
  */
 
-export type DbType = 'postgresql' | 'mssql' | 'oracle';
+export type DbType = 'postgresql' | 'mssql' | 'oracle' | 'hanabw';
 
 export interface DatabaseConfig {
   alias: string;
@@ -18,6 +18,8 @@ export interface DatabaseConfig {
   driver: string;
   serviceName: string;
   poolMax: number;
+  bwTableFilter: string[];
+  bwDescriptionLang: string;
 }
 
 export interface QualityWeights {
