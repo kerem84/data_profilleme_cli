@@ -89,6 +89,16 @@ export class ExcelReportGenerator {
       ['Toplam Boyut', profile.total_size_display || '-'],
       ['Genel Kalite Skoru', `${(profile.overall_quality_score * 100).toFixed(2)}%`],
     ];
+    if (profile.incremental) {
+      data.push(
+        ['', ''],
+        ['Incremental Mod', 'Evet'],
+        ['Baseline Tarihi', profile.incremental.baseline_profiled_at],
+        ['Degisen Tablolar', profile.incremental.tables_changed],
+        ['Degismeyen Tablolar', profile.incremental.tables_unchanged],
+        ['Yeni Tablolar', profile.incremental.tables_new],
+      );
+    }
     data.forEach(([label, value], i) => {
       const row = ws.getRow(i + 1);
       row.getCell(1).value = label;
@@ -122,16 +132,30 @@ export class ExcelReportGenerator {
 
   private writeTableProfile(wb: ExcelJS.Workbook, profile: DatabaseProfile): void {
     const ws = wb.addWorksheet('Tablo Profil');
+    const hasIncremental = profile.incremental?.enabled;
     const headers = [
       'Sema', 'Tablo', 'Tip', 'Satir Sayisi', 'Tahmini', 'Boyut',
       'Kolon Sayisi', 'Sampling', 'Sample %',
       'Kalite Skoru', 'Kalite Notu', 'Sure (sn)',
+      ...(hasIncremental ? ['Durum'] : []),
     ];
     this.applyHeader(ws, headers);
+
+    const UNCHANGED_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
+    const CHANGED_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF9C4' } };
+    const NEW_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC8E6C9' } };
+
+    const STATUS_LABELS: Record<string, string> = {
+      changed: 'Degisti',
+      unchanged: 'Degismedi',
+      new: 'Yeni',
+      full: 'Tam',
+    };
 
     let r = 2;
     for (const schema of profile.schemas) {
       for (const table of schema.tables) {
+        const colCount = hasIncremental ? 13 : 12;
         ws.getRow(r).getCell(1).value = table.schema_name;
         ws.getRow(r).getCell(2).value = table.table_name;
         ws.getRow(r).getCell(3).value = table.table_type;
@@ -146,7 +170,22 @@ export class ExcelReportGenerator {
         gradeCell.value = table.table_quality_grade;
         gradeCell.fill = GRADE_FILLS[table.table_quality_grade] ?? GRADE_FILLS['F'];
         ws.getRow(r).getCell(12).value = table.profile_duration_sec;
-        for (let c = 1; c <= 12; c++) ws.getRow(r).getCell(c).border = THIN_BORDER;
+
+        if (hasIncremental && table.incremental_status) {
+          const statusCell = ws.getRow(r).getCell(13);
+          statusCell.value = STATUS_LABELS[table.incremental_status] ?? table.incremental_status;
+
+          // Color unchanged rows with dim background
+          if (table.incremental_status === 'unchanged') {
+            for (let c = 1; c <= colCount; c++) ws.getRow(r).getCell(c).fill = UNCHANGED_FILL;
+          } else if (table.incremental_status === 'changed') {
+            statusCell.fill = CHANGED_FILL;
+          } else if (table.incremental_status === 'new') {
+            statusCell.fill = NEW_FILL;
+          }
+        }
+
+        for (let c = 1; c <= colCount; c++) ws.getRow(r).getCell(c).border = THIN_BORDER;
         r++;
       }
     }

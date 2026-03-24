@@ -29,6 +29,15 @@
       <span class="badge badge-{{ overall_grade|lower }}">{{ overall_grade }}</span>
     </div>
   </div>
+  {% if profile.incremental %}
+  <div class="card">
+    <div class="label">Incremental</div>
+    <div class="value">{{ profile.incremental.tables_changed }} degisti</div>
+    <div class="sub" style="font-size:11px; color:var(--text-muted);">
+      {{ profile.incremental.tables_unchanged }} ayni, {{ profile.incremental.tables_new }} yeni
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 <!-- Charts -->
