@@ -705,6 +705,7 @@ async function multiSelectWithAll(
     options: [
       { value: 'all' as const, label: `Tumunu Sec ${C.dim(`(${options.length})`)}` },
       { value: 'manual' as const, label: 'Manuel Sec' },
+      { value: 'manual_empty' as const, label: 'Manuel Sec (Bos)' },
     ],
   });
   if (p.isCancel(mode)) return [];
@@ -720,7 +721,7 @@ async function multiSelectWithAll(
     message,
     options: options.map((o) => ({ value: o.value, label: o.label, hint: o.hint })),
     required: true,
-    initialValues: options.map((o) => o.value),
+    initialValues: mode === 'manual' ? options.map((o) => o.value) : [],
   });
   if (p.isCancel(chosen)) return [];
   return chosen as string[];
