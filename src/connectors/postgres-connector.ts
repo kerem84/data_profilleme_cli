@@ -22,7 +22,7 @@ export class PostgresConnector extends BaseConnector {
       password: config.password,
       connectionTimeoutMillis: config.connectTimeout * 1000,
       statement_timeout: config.statementTimeout,
-      max: 3,
+      max: config.poolMax,
     });
   }
 

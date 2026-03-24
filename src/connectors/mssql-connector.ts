@@ -32,7 +32,7 @@ export class MssqlConnector extends BaseConnector {
         isolationLevel: sql.ISOLATION_LEVEL.READ_UNCOMMITTED,
       },
       pool: {
-        max: 3,
+        max: config.poolMax,
         min: 0,
         idleTimeoutMillis: 30000,
       },

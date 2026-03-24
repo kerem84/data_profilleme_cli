@@ -47,6 +47,7 @@ export function loadConfig(configPath: string): AppConfig {
       schemaFilter: db.schema_filter,
       driver: db.driver,
       serviceName: db.service_name,
+      poolMax: data.profiling.concurrency,
     };
   }
 
@@ -61,6 +62,7 @@ export function loadConfig(configPath: string): AppConfig {
       numericPercentiles: data.profiling.numeric_percentiles,
       maxPatternSample: data.profiling.max_pattern_sample,
       outlierIqrMultiplier: data.profiling.outlier_iqr_multiplier,
+      concurrency: data.profiling.concurrency,
       qualityWeights: {
         completeness: data.profiling.quality_weights.completeness,
         uniqueness: data.profiling.quality_weights.uniqueness,
