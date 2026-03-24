@@ -50,6 +50,7 @@
     "exceljs": "^4.4.0",
     "figlet": "^1.10.0",
     "gradient-string": "^3.0.0",
+    "hdb": "^2.27.1",
     "mssql": "^11.0.0",
     "nunjucks": "^3.2.4",
     "oracledb": "^6.10.0",

@@ -14,6 +14,8 @@ const STRING_TYPES = new Set([
   'nvarchar', 'nchar', 'ntext',
   // Oracle
   'varchar2', 'nvarchar2', 'clob', 'nclob', 'long',
+  // HANA
+  'nvarchar', 'nchar', 'nclob', 'shorttext', 'alphanum',
 ]);
 
 // MSSQL pattern map (LIKE/PATINDEX equivalents of regex)
@@ -27,6 +29,19 @@ const MSSQL_PATTERN_MAP: Record<string, string> = {
   url: "(val LIKE 'http://%' OR val LIKE 'https://%')",
   json_object: "(LEFT(val, 1) = '{' AND RIGHT(val, 1) = '}')",
   numeric_string: "(PATINDEX('%[^0-9.+-]%', val) = 0 AND LEN(val) > 0)",
+};
+
+// HANA LIKE_REGEXPR pattern map
+const HANA_PATTERN_MAP: Record<string, string> = {
+  email: "val LIKE_REGEXPR '.+@.+\\..+'",
+  phone_tr: "(val LIKE_REGEXPR '^\\+90[0-9]{10}$' OR val LIKE_REGEXPR '^0[0-9]{10}$' OR (LENGTH(val) = 10 AND val LIKE_REGEXPR '^[0-9]+$'))",
+  tc_kimlik: "(LENGTH(val) = 11 AND SUBSTR(val,1,1) != '0' AND val LIKE_REGEXPR '^[0-9]+$')",
+  uuid: "val LIKE_REGEXPR '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'",
+  iso_date: "val LIKE_REGEXPR '^[0-9]{4}-[0-9]{2}-[0-9]{2}'",
+  iso_datetime: "val LIKE_REGEXPR '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}'",
+  url: "(val LIKE 'http://%' OR val LIKE 'https://%')",
+  json_object: "(SUBSTR(val,1,1) = '{' AND SUBSTR(val,LENGTH(val)) = '}')",
+  numeric_string: "(val LIKE_REGEXPR '^[0-9.+-]+$' AND LENGTH(val) > 0)",
 };
 
 // Oracle REGEXP_LIKE pattern map
@@ -105,6 +120,18 @@ export class PatternAnalyzer {
           FETCH FIRST ${this.maxSample} ROWS ONLY
         ) sub
       `;
+    } else if (this.dbType === 'hanabw') {
+      sqlText = `
+        SELECT
+          COUNT(*) AS sample_size,
+          ${patternCases}
+        FROM (
+          SELECT CAST(${quotedColumn} AS NVARCHAR(5000)) AS val
+          FROM ${quotedSchema}.${quotedTable}
+          WHERE ${quotedColumn} IS NOT NULL
+          LIMIT ${this.maxSample}
+        ) sub
+      `;
     } else {
       sqlText = `
         SELECT
@@ -167,6 +194,7 @@ export class PatternAnalyzer {
   private buildPatternCases(): string {
     if (this.dbType === 'mssql') return this.buildMssqlPatternCases();
     if (this.dbType === 'oracle') return this.buildOraclePatternCases();
+    if (this.dbType === 'hanabw') return this.buildHanaPatternCases();
     return this.buildPgPatternCases();
   }
 
@@ -192,6 +220,15 @@ export class PatternAnalyzer {
     const cases: string[] = [];
     for (const name of Object.keys(this.patterns)) {
       const expr = ORACLE_PATTERN_MAP[name] ?? '1=0';
+      cases.push(`SUM(CASE WHEN ${expr} THEN 1 ELSE 0 END) AS pattern_${name}`);
+    }
+    return cases.join(',\n                ');
+  }
+
+  private buildHanaPatternCases(): string {
+    const cases: string[] = [];
+    for (const name of Object.keys(this.patterns)) {
+      const expr = HANA_PATTERN_MAP[name] ?? '1=0';
       cases.push(`SUM(CASE WHEN ${expr} THEN 1 ELSE 0 END) AS pattern_${name}`);
     }
     return cases.join(',\n                ');

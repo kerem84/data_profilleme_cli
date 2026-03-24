@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { DbType } from '../config/types.js';
 
 const IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const HANA_IDENTIFIER_RE = /^[a-zA-Z_/][a-zA-Z0-9_/]*$/;
 
 export class SqlLoader {
   private sqlDir: string;
@@ -49,7 +50,8 @@ export class SqlLoader {
    * PostgreSQL/Oracle: "name", MSSQL: [name]
    */
   validateIdentifier(name: string): string {
-    if (!IDENTIFIER_RE.test(name)) {
+    const re = this.dbType === 'hanabw' ? HANA_IDENTIFIER_RE : IDENTIFIER_RE;
+    if (!re.test(name)) {
       throw new Error(
         `Gecersiz SQL identifier: '${name}'. Sadece harf, rakam ve alt cizgi kabul edilir.`,
       );

@@ -48,6 +48,8 @@ export function loadConfig(configPath: string): AppConfig {
       driver: db.driver,
       serviceName: db.service_name,
       poolMax: data.profiling.concurrency,
+      bwTableFilter: db.bw_table_filter,
+      bwDescriptionLang: db.bw_description_lang,
     };
   }
 

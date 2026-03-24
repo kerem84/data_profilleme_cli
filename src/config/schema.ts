@@ -3,20 +3,22 @@
  */
 import { z } from 'zod';
 
-const dbTypeEnum = z.enum(['postgresql', 'mssql', 'oracle']);
+const dbTypeEnum = z.enum(['postgresql', 'mssql', 'oracle', 'hanabw']);
 
 const databaseConfigSchema = z.object({
   db_type: dbTypeEnum.default('postgresql'),
   host: z.string().min(1),
   port: z.coerce.number().int().positive(),
-  dbname: z.string().min(1),
+  dbname: z.string().default(''),
   user: z.string().min(1),
   password: z.string(),
   connect_timeout: z.coerce.number().int().positive().default(15),
   statement_timeout: z.coerce.number().int().positive().default(300000),
-  schema_filter: z.union([z.literal('*'), z.array(z.string())]).default('*'),
+  schema_filter: z.union([z.string(), z.array(z.string())]).default('*'),
   driver: z.string().default('ODBC Driver 17 for SQL Server'),
   service_name: z.string().default(''),
+  bw_table_filter: z.array(z.string()).default(['/BIC/A', '/BIC/F']),
+  bw_description_lang: z.string().default('TR'),
 });
 
 const qualityWeightsSchema = z.object({

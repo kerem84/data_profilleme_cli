@@ -43,8 +43,8 @@ export class OutlierDetector {
       });
 
       let result;
-      if (this.dbType === 'mssql') {
-        // MSSQL: ? positional params (multiplier x2)
+      if (this.dbType === 'mssql' || this.dbType === 'hanabw') {
+        // MSSQL/HANA: ? positional params (multiplier x2)
         result = await conn.query(sqlText, [iqrMultiplier, iqrMultiplier]);
       } else if (this.dbType === 'oracle') {
         // Oracle: :iqr_multiplier named bind -> inlined

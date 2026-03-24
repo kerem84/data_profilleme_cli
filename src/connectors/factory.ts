@@ -6,6 +6,7 @@ import { BaseConnector } from './base-connector.js';
 import { PostgresConnector } from './postgres-connector.js';
 import { MssqlConnector } from './mssql-connector.js';
 import { OracleConnector } from './oracle-connector.js';
+import { HanaBwConnector } from './hanabw-connector.js';
 
 export function createConnector(config: DatabaseConfig): BaseConnector {
   if (config.dbType === 'mssql') {
@@ -13,6 +14,9 @@ export function createConnector(config: DatabaseConfig): BaseConnector {
   }
   if (config.dbType === 'oracle') {
     return new OracleConnector(config);
+  }
+  if (config.dbType === 'hanabw') {
+    return new HanaBwConnector(config);
   }
   return new PostgresConnector(config);
 }
