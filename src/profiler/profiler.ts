@@ -304,7 +304,7 @@ export class Profiler {
         const connector = this.connector as InstanceType<typeof HanaBwConnector>;
         const sapLang = connector.getSapLangCode();
         const rsdiobjSchema = schema.toUpperCase() === 'SAPABAP1' ? schema : 'SAPABAP1';
-        const inlined = sqlText.replace('RSDIOBJT', `"${rsdiobjSchema}".RSDIOBJT`);
+        const inlined = sqlText.replaceAll('RSDIOBJT', `"${rsdiobjSchema}"."RSDIOBJT"`);
         result = await conn.query(inlined, [sapLang, schema]);
       } else {
         // information_schema queries fail with parameterised $1 on complex

@@ -36,14 +36,21 @@ function connectClient(client: HdbClient): Promise<void> {
 
 function execSql(client: HdbClient, sql: string, params?: unknown[]): Promise<Record<string, unknown>[]> {
   return new Promise((resolve, reject) => {
-    const cb = (err: Error | null, rows: Record<string, unknown>[]) => {
-      if (err) reject(err);
-      else resolve(rows ?? []);
-    };
     if (params && params.length > 0) {
-      client.exec(sql, params, cb);
+      // Use prepare+execute for parameterized queries (hdb exec doesn't bind reliably)
+      client.prepare(sql, (err, statement) => {
+        if (err) return reject(err);
+        statement.exec(params, (err2, rows) => {
+          statement.drop();
+          if (err2) reject(err2);
+          else resolve(rows ?? []);
+        });
+      });
     } else {
-      client.exec(sql, cb);
+      client.exec(sql, (err: Error | null, rows: Record<string, unknown>[]) => {
+        if (err) reject(err);
+        else resolve(rows ?? []);
+      });
     }
   });
 }

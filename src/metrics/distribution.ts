@@ -86,6 +86,9 @@ export class DistributionMetrics {
       if (this.dbType === 'mssql') {
         // MSSQL: ? positional -> top_n, total_count
         result = await conn.query(sqlText, [topN, rowCount]);
+      } else if (this.dbType === 'hanabw') {
+        // HANA: ? positional -> total_count, top_n
+        result = await conn.query(sqlText, [rowCount, topN]);
       } else if (this.dbType === 'oracle') {
         // Oracle: :total_count, :top_n named binds -> inlined
         const ora = this.sql.oracleParams(sqlText, { total_count: rowCount, top_n: topN });
