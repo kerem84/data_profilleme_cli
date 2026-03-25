@@ -3,12 +3,15 @@
 
 
 
-Kaynak veritabani tablolarini otomatik profilleme araci. PostgreSQL, MSSQL ve Oracle veritabanlarina baglanarak tablo ve kolon bazinda kalite analizi yapar, Excel ve HTML raporlari uretir.
+Kaynak veritabani tablolarini otomatik profilleme araci. PostgreSQL, MSSQL, Oracle ve SAP BW/HANA veritabanlarina baglanarak tablo ve kolon bazinda kalite analizi yapar, Excel ve HTML raporlari uretir, ER diyagramlari olusturur.
 
 ## Ozellikler
 
-- **Coklu DB Destegi**: PostgreSQL, MSSQL ve Oracle
+### Profilleme
+- **Coklu DB Destegi**: PostgreSQL, MSSQL, Oracle ve SAP BW/HANA
 - **Interaktif CLI**: Menu tabanli veritabani/sema/tablo secimi (Tumunu Sec / Manuel Sec)
+- **Paralel Profilleme**: Tablolar es zamanli profillenir (3-5x hizlanma)
+- **Incremental Profilleme**: Sadece degisen tablolari yeniden profille (delta analiz)
 - **Kolon Profilleme**: NULL orani, distinct sayisi, min/max, top-N degerler
 - **Numerik Analiz**: Ortalama, standart sapma, percentile, histogram, outlier tespiti (IQR)
 - **Pattern Tespiti**: Email, telefon, TC kimlik, UUID, tarih vb. regex desenleri
@@ -16,7 +19,18 @@ Kaynak veritabani tablolarini otomatik profilleme araci. PostgreSQL, MSSQL ve Or
 - **Tablo Boyutu**: Her tablo icin disk boyutu (bytes, KB, MB, GB)
 - **PK/FK Tespiti**: Primary key ve foreign key iliskileri metadata'dan cikarilir
 - **Raporlama**: Excel (.xlsx) ve HTML (Chart.js grafikleri dahil)
+- **Profil Karsilastirma**: Iki profil JSON arasindaki farklari raporla (diff report)
 - **Guvenli**: Read-only session (PG), WITH NOLOCK (MSSQL), SET TRANSACTION READ ONLY (Oracle), statement timeout, connection pool limiti
+
+### ER Diyagrami
+- **Otomatik Uretim**: Profil JSON'dan PK/FK iliskilerine dayali ER diyagrami
+- **Cikti Formatlari**: SVG, PNG, HTML (interaktif), Mermaid (.mmd), DOT
+- **Detay Seviyeleri**: Minimal (sadece tablo adlari), Medium (PK/FK kolonlari), Full (tum kolonlar)
+- **Sema Bazli SVG**: Her sema icin ayri Graphviz layout'lu SVG uretimi
+- **Interaktif HTML**: Zoom/pan, tablo arama, sema dropdown ile SVG degistirme, tooltip
+- **Engine Secimi**: dot, neato, fdp, sfdp, circo, twopi veya otomatik
+- **Phantom Tablolar**: Cross-schema FK hedefleri kesikli cerceveli ghost node olarak gosterilir
+- **Crow's Foot Notasyonu**: 1:1 ve 1:N iliskileri gorsel kardinalite sembolleriyle
 
 ## Kurulum
 
@@ -27,6 +41,17 @@ npm install -g @intellica/data-profiler
 **Gereksinimler**: Node.js >= 18
 
 > Oracle baglantisi icin Oracle Client kurulumu **gerekmez** — `oracledb` thin mode ile calisir.
+
+> ER diyagrami (SVG/PNG/HTML) icin [Graphviz](https://graphviz.org/download/) gereklidir:
+> ```bash
+> # Windows
+> winget install Graphviz
+> # macOS
+> brew install graphviz
+> # Ubuntu/Debian
+> sudo apt install graphviz
+> ```
+> Mermaid ve DOT formatlari Graphviz olmadan da calisir.
 
 ## Hizli Baslangic
 
@@ -120,6 +145,8 @@ CLI calistiginda asagidaki menuyu gorursunuz:
 Ne yapmak istiyorsunuz?
   > Veritabani Profille
     JSON'dan Rapor Uret
+    Profil Karsilastir
+    ER Diyagrami Olustur
     Baglanti Testi
     Cikis
 ```
@@ -134,6 +161,14 @@ Ne yapmak istiyorsunuz?
 7. Profilleme baslar, ilerleme cubugu gosterilir
 8. JSON + Excel + HTML raporlari `output_dir`'e yazilir
 
+**ER diyagrami akisi:**
+1. Profil JSON dosyasi sec
+2. Detay seviyesi sec (minimal / medium / full)
+3. Cikti formatlari sec (SVG, PNG, HTML, Mermaid, DOT)
+4. Graphviz engine sec (otomatik / dot / sfdp / ...)
+5. Sema sec (Tumunu Sec / tek sema)
+6. Sema basina ayri SVG + birlesik HTML uretilir
+
 ## Cikti Dosyalari
 
 ```
@@ -142,21 +177,29 @@ output/
   profil_mydb_20260308_120000.xlsx    # Excel raporu
   profil_mydb_20260308_120000.html    # HTML raporu (grafikli)
   profil.log                          # Islem logu
+
+  er_mydb/                            # ER diyagramlari (database bazli)
+    er_mydb_medium_20260325.svg       # Birlesik SVG (tum semalar)
+    er_mydb_medium_20260325.html      # Interaktif HTML (tum SVG'ler embed)
+    public/                           # Sema bazli klasor
+      er_mydb_public_medium_....svg   # Sadece public semasi + phantom komsular
+    sales/
+      er_mydb_sales_medium_....svg
 ```
 
 ## Desteklenen Veritabanlari
 
-| Ozellik | PostgreSQL | MSSQL | Oracle |
-|---|---|---|---|
-| Baglanti | `pg` (Pool) | `mssql` (tedious) | `oracledb` (thin) |
-| Read-only | `SET SESSION READ ONLY` | `READ_UNCOMMITTED` + `NOLOCK` | `SET TRANSACTION READ ONLY` |
-| Schema discovery | `information_schema` | `sys.schemas` | `ALL_TABLES` (owner) |
-| PK/FK | `pg_constraint` | `sys.foreign_keys` | `ALL_CONSTRAINTS` |
-| Tablo boyutu | `pg_total_relation_size()` | `sys.allocation_units` | `DBA_SEGMENTS` / `USER_SEGMENTS` |
-| Percentile | `PERCENTILE_CONT` | `PERCENTILE_CONT OVER()` | `PERCENTILE_CONT WITHIN GROUP` |
-| Pattern | regex `~` | `PATINDEX` / `LIKE` | `REGEXP_LIKE` |
-| Row limit | `LIMIT` | `TOP(n)` | `FETCH FIRST n ROWS ONLY` |
-| Identifier quoting | `"name"` | `[name]` | `"name"` |
+| Ozellik | PostgreSQL | MSSQL | Oracle | SAP BW/HANA |
+|---|---|---|---|---|
+| Baglanti | `pg` (Pool) | `mssql` (tedious) | `oracledb` (thin) | `hdb` (hana-client) |
+| Read-only | `SET SESSION READ ONLY` | `READ_UNCOMMITTED` + `NOLOCK` | `SET TRANSACTION READ ONLY` | Read-only connection |
+| Schema discovery | `information_schema` | `sys.schemas` | `ALL_TABLES` (owner) | `SYS.TABLES` |
+| PK/FK | `pg_constraint` | `sys.foreign_keys` | `ALL_CONSTRAINTS` | `SYS.CONSTRAINTS` |
+| Tablo boyutu | `pg_total_relation_size()` | `sys.allocation_units` | `DBA_SEGMENTS` / `USER_SEGMENTS` | `M_TABLE_PERSISTENCE_STATISTICS` |
+| Percentile | `PERCENTILE_CONT` | `PERCENTILE_CONT OVER()` | `PERCENTILE_CONT WITHIN GROUP` | `PERCENTILE_CONT` |
+| Pattern | regex `~` | `PATINDEX` / `LIKE` | `REGEXP_LIKE` | `LIKE` |
+| Row limit | `LIMIT` | `TOP(n)` | `FETCH FIRST n ROWS ONLY` | `LIMIT` |
+| Identifier quoting | `"name"` | `[name]` | `"name"` | `"name"` |
 
 ## Kalite Skorlama
 
