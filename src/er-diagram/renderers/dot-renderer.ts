@@ -62,9 +62,11 @@ function renderRelation(rel: ERRelation, totalTables: number, totalEdges: number
   const fullName = rel.constraint_name;
 
   // Cardinality arrows
+  // from=FK table (N side), to=PK table (1 side)
+  // arrowtail=source (from), arrowhead=target (to)
   const arrowAttrs = rel.cardinality === '1:1'
     ? 'arrowhead=tee, arrowtail=tee'
-    : 'arrowhead=crow, arrowtail=tee';
+    : 'arrowhead=tee, arrowtail=crow';
 
   // Tooltip always has full constraint name
   const tooltip = `tooltip="${escapeLabel(fullName)}"`;
