@@ -1,16 +1,32 @@
 /**
- * ER Diagram Interactive Controls: zoom, pan, search, filter, tooltip.
+ * ER Diagram Interactive Controls: zoom, pan, search, schema-switch, tooltip.
+ *
+ * Per-schema SVGs are embedded as separate .er-svg-layer divs.
+ * Schema dropdown switches which layer is visible (display:none / '').
+ * "Tüm Şemalar" shows the combined full SVG.
+ * Search filters nodes within the active layer via opacity dimming.
  */
 (function () {
   var container = document.getElementById('er-container');
-  var wrapper = document.getElementById('er-svg-wrapper');
-  var searchInput = document.getElementById('er-search');
   var schemaFilter = document.getElementById('er-schema-filter');
+  var searchInput = document.getElementById('er-search');
   var zoomLabel = document.getElementById('er-zoom-level');
   var tooltip = document.getElementById('er-tooltip');
+  var hasPerSchema = window.ER_HAS_PER_SCHEMA || false;
 
-  if (!container || !wrapper) return;
+  if (!container) return;
 
+  // All SVG layers
+  var allLayers = container.querySelectorAll('.er-svg-layer');
+
+  function getActiveLayer() {
+    for (var i = 0; i < allLayers.length; i++) {
+      if (allLayers[i].style.display !== 'none') return allLayers[i];
+    }
+    return allLayers[0];
+  }
+
+  // --- Zoom & Pan state ---
   var scale = 1;
   var panX = 0;
   var panY = 0;
@@ -19,7 +35,10 @@
   var startY = 0;
 
   function updateTransform() {
-    wrapper.style.transform = 'translate(' + panX + 'px, ' + panY + 'px) scale(' + scale + ')';
+    var layer = getActiveLayer();
+    if (layer) {
+      layer.style.transform = 'translate(' + panX + 'px, ' + panY + 'px) scale(' + scale + ')';
+    }
     if (zoomLabel) zoomLabel.textContent = Math.round(scale * 100) + '%';
   }
 
@@ -74,69 +93,117 @@
     updateTransform();
   };
 
-  // --- Search & Filter ---
-  function getNodes() { return wrapper.querySelectorAll('.node'); }
-  function getEdges() { return wrapper.querySelectorAll('.edge'); }
+  // --- Schema layer switching ---
+  function switchSchema(schemaName) {
+    // Reset zoom/pan for new layer
+    scale = 1; panX = 0; panY = 0;
 
-  function applyFilter() {
+    for (var i = 0; i < allLayers.length; i++) {
+      var layer = allLayers[i];
+      var layerSchema = layer.getAttribute('data-schema') || '';
+
+      if (schemaName === '') {
+        // "Tüm Şemalar" — show combined (data-schema="")
+        layer.style.display = (layerSchema === '') ? '' : 'none';
+      } else if (hasPerSchema) {
+        // Show per-schema SVG if available
+        layer.style.display = (layerSchema === schemaName) ? '' : 'none';
+      } else {
+        // No per-schema SVGs, show combined
+        layer.style.display = (layerSchema === '') ? '' : 'none';
+      }
+
+      // Clear transform on hidden layers
+      if (layer.style.display === 'none') {
+        layer.style.transform = '';
+      }
+    }
+
+    updateTransform();
+    applySearch(); // Re-apply search filter on new layer
+    updateInfo();
+  }
+
+  if (schemaFilter) {
+    schemaFilter.addEventListener('change', function () {
+      switchSchema(schemaFilter.value);
+    });
+  }
+
+  // --- Search (within active layer) ---
+  function applySearch() {
     var query = (searchInput ? searchInput.value : '').toLowerCase().trim();
-    var schema = schemaFilter ? schemaFilter.value : '';
-    var nodes = getNodes();
-    var edges = getEdges();
-    var matchedNodeIds = new Set();
+    var layer = getActiveLayer();
+    if (!layer) return;
+
+    var nodes = layer.querySelectorAll('.node');
+    var edges = layer.querySelectorAll('.edge');
+
+    if (!query) {
+      nodes.forEach(function (n) {
+        n.style.opacity = '';
+        n.classList.remove('er-dimmed', 'er-highlight');
+      });
+      edges.forEach(function (e) {
+        e.style.opacity = '';
+        e.classList.remove('er-dimmed');
+      });
+      return;
+    }
+
+    var matchedIds = new Set();
+    nodes.forEach(function (node) {
+      var title = node.querySelector('title');
+      var nodeId = title ? title.textContent.trim().replace(/"/g, '') : '';
+      if (nodeId.toLowerCase().includes(query)) {
+        matchedIds.add(nodeId);
+      }
+    });
 
     nodes.forEach(function (node) {
       var title = node.querySelector('title');
-      var nodeId = title ? title.textContent.trim() : '';
-      var parts = nodeId.replace(/"/g, '').split('.');
-      var schemaName = parts.length > 1 ? parts[0] : '';
-      var tableName = parts.length > 1 ? parts[1] : parts[0] || '';
-
-      var match = true;
-      if (query && !tableName.toLowerCase().includes(query) && !nodeId.toLowerCase().includes(query)) {
-        match = false;
-      }
-      if (schema && schemaName !== schema) {
-        match = false;
-      }
-
-      if (!query && !schema) {
-        node.classList.remove('er-dimmed', 'er-highlight');
-      } else if (match) {
+      var nodeId = title ? title.textContent.trim().replace(/"/g, '') : '';
+      if (matchedIds.has(nodeId)) {
+        node.style.opacity = '';
         node.classList.remove('er-dimmed');
         node.classList.add('er-highlight');
-        matchedNodeIds.add(nodeId);
       } else {
+        node.style.opacity = '0.12';
         node.classList.add('er-dimmed');
         node.classList.remove('er-highlight');
       }
     });
 
     edges.forEach(function (edge) {
-      if (!query && !schema) {
-        edge.classList.remove('er-dimmed');
-        return;
-      }
       var title = edge.querySelector('title');
-      if (!title) { edge.classList.add('er-dimmed'); return; }
+      if (!title) { edge.style.opacity = '0.06'; return; }
       var edgeTitle = title.textContent.trim();
-      var connected = Array.from(matchedNodeIds).some(function (id) {
+      var connected = Array.from(matchedIds).some(function (id) {
         return edgeTitle.includes(id);
       });
-      edge.classList[connected ? 'remove' : 'add']('er-dimmed');
+      edge.style.opacity = connected ? '' : '0.06';
     });
   }
 
-  if (searchInput) searchInput.addEventListener('input', applyFilter);
-  if (schemaFilter) schemaFilter.addEventListener('change', applyFilter);
+  if (searchInput) searchInput.addEventListener('input', applySearch);
+
+  // --- Info label ---
+  function updateInfo() {
+    var infoLabel = document.querySelector('.er-info');
+    if (!infoLabel) return;
+    var layer = getActiveLayer();
+    if (!layer) return;
+    var nodes = layer.querySelectorAll('.node');
+    var edges = layer.querySelectorAll('.edge');
+    infoLabel.textContent = nodes.length + ' tablo \u00b7 ' + edges.length + ' ili\u015fki';
+  }
 
   // --- Tooltip: nodes + edges ---
   if (tooltip) {
     var meta = window.ER_TABLE_META || {};
     var edgeMeta = window.ER_EDGE_META || {};
 
-    wrapper.addEventListener('mouseover', function (e) {
-      // Node tooltip
+    container.addEventListener('mouseover', function (e) {
       var node = e.target.closest('.node');
       if (node) {
         var title = node.querySelector('title');
@@ -157,7 +224,6 @@
         return;
       }
 
-      // Edge tooltip
       var edge = e.target.closest('.edge');
       if (edge) {
         var eTitle = edge.querySelector('title');
@@ -166,7 +232,7 @@
         var eInfo = edgeMeta[edgeId];
         if (eInfo) {
           var eHtml = '<div class="tt-title">' + escapeHtml(eInfo.constraint) + '</div>';
-          eHtml += '<div class="tt-meta">' + escapeHtml(eInfo.from + ' → ' + eInfo.to) + '</div>';
+          eHtml += '<div class="tt-meta">' + escapeHtml(eInfo.from + ' \u2192 ' + eInfo.to) + '</div>';
           eHtml += '<div class="tt-meta">' + escapeHtml(eInfo.cardinality) + '</div>';
           if (eInfo.columns) {
             eHtml += '<div class="tt-cols">' + escapeHtml(eInfo.columns) + '</div>';
@@ -187,7 +253,7 @@
       }
     });
 
-    wrapper.addEventListener('mouseout', function (e) {
+    container.addEventListener('mouseout', function (e) {
       if (!e.target.closest('.node') && !e.target.closest('.edge')) {
         tooltip.style.display = 'none';
       }
@@ -200,5 +266,7 @@
     return d.innerHTML;
   }
 
+  // Initial state
   updateTransform();
+  updateInfo();
 })();

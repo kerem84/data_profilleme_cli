@@ -1,6 +1,15 @@
 /**
  * ER Diagram Generator orchestrator.
  * Builds ERModel from profile JSON, renders to selected formats.
+ * Always generates per-schema SVGs + a combined SVG.
+ * HTML embeds all per-schema SVGs and switches via dropdown.
+ *
+ * Output directory structure:
+ *   output/er_{db}/                  ← database root
+ *     er_{db}_{level}_{ts}.svg       ← combined
+ *     er_{db}_{level}_{ts}.html      ← interactive HTML
+ *     {schema}/                      ← per-schema folder
+ *       er_{db}_{schema}_{level}_{ts}.svg
  */
 
 import fs from 'node:fs';
@@ -8,7 +17,7 @@ import path from 'node:path';
 import { getLogger } from '../utils/logger.js';
 import type { DatabaseProfile } from '../profiler/types.js';
 import type { DetailLevel, EROutputFormat, GraphvizEngine } from './types.js';
-import { buildERModel } from './er-model.js';
+import { buildERModel, filterERModel } from './er-model.js';
 import { renderDot, selectEngine } from './renderers/dot-renderer.js';
 import { renderMermaid } from './renderers/mermaid-renderer.js';
 import { renderHtml } from './renderers/html-renderer.js';
@@ -20,9 +29,11 @@ export interface GenerateEROptions {
   formats: EROutputFormat[];
   output_dir: string;
   template_dir: string;
+  schema_filter?: string[];
+  engine_override?: GraphvizEngine;
 }
 
-function makeFilename(dbAlias: string, level: string, ext: string): string {
+function makeFilename(dbAlias: string, level: string, ext: string, schemaSuffix?: string): string {
   const now = new Date();
   const ts = [
     now.getFullYear(),
@@ -33,59 +44,66 @@ function makeFilename(dbAlias: string, level: string, ext: string): string {
     String(now.getMinutes()).padStart(2, '0'),
     String(now.getSeconds()).padStart(2, '0'),
   ].join('');
-  return `er_${dbAlias}_${level}_${ts}.${ext}`;
+  const schemaTag = schemaSuffix ? `_${schemaSuffix}` : '';
+  return `er_${dbAlias}${schemaTag}_${level}_${ts}.${ext}`;
+}
+
+/** Ensure directory exists */
+function ensureDir(dir: string): void {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
 export async function generateERDiagram(options: GenerateEROptions): Promise<string[]> {
   const logger = getLogger();
-  const { profile, detail_level, formats, output_dir, template_dir } = options;
+  const { profile, detail_level, formats, output_dir, template_dir, schema_filter, engine_override } = options;
   const outputFiles: string[] = [];
   const startTime = Date.now();
 
-  logger.info(`ER üretimi başlıyor: db=${profile.db_alias}, detay=${detail_level}, formatlar=[${formats.join(', ')}]`);
+  logger.info(`ER üretimi başlıyor: db=${profile.db_alias}, detay=${detail_level}, formatlar=[${formats.join(', ')}]${engine_override ? `, engine=${engine_override}` : ''}`);
 
-  // Build model
-  const model = buildERModel(profile, detail_level);
+  // Build full model
+  const fullModel = buildERModel(profile, detail_level);
+
   let totalTables = 0;
   let totalColumns = 0;
-  for (const s of model.schemas) {
+  for (const s of fullModel.schemas) {
     totalTables += s.tables.length;
     for (const t of s.tables) {
       totalColumns += t.columns.length;
     }
   }
-  logger.info(`ERModel: ${model.schemas.length} şema, ${totalTables} tablo, ${totalColumns} kolon, ${model.relations.length} ilişki`);
+  logger.info(`ERModel: ${fullModel.schemas.length} şema, ${totalTables} tablo, ${totalColumns} kolon, ${fullModel.relations.length} ilişki`);
 
-  if (model.relations.length === 0) {
+  if (fullModel.relations.length === 0) {
     logger.warn('Profilde FK ilişkisi bulunamadı. Diyagram sadece tabloları gösterecek.');
   }
 
-  // Select engine based on graph complexity
-  const engine: GraphvizEngine = selectEngine(model);
-  if (engine !== 'dot') {
-    logger.warn(`Büyük graf (${totalTables} tablo, ${model.relations.length} ilişki) — '${engine}' engine kullanılacak`);
-  }
+  // Determine which schemas to process
+  const allSchemaNames = fullModel.schemas.map((s) => s.schema_name);
+  const targetSchemas = (schema_filter && schema_filter.length > 0)
+    ? schema_filter.filter((s) => allSchemaNames.includes(s))
+    : allSchemaNames;
 
-  // Generate DOT (needed for SVG/PNG/HTML too)
-  const dotString = renderDot(model);
-  const dotSizeKB = Math.round(dotString.length / 1024);
-  logger.info(`DOT üretildi: ${dotSizeKB}KB, engine=${engine}`);
+  // --- Directory structure: output/er_{db}/ ---
+  const dbDir = path.join(output_dir, `er_${profile.db_alias}`);
+  ensureDir(dbDir);
 
   // Set up Graphviz stderr log file
   const logFilename = makeFilename(profile.db_alias, detail_level, 'log');
-  const logPath = path.join(output_dir, logFilename);
+  const logPath = path.join(dbDir, logFilename);
   setStderrLogPath(logPath);
   const header = [
     `ER Diagram Log — ${profile.db_alias}`,
-    `Detay: ${detail_level} | Formatlar: ${formats.join(', ')} | Engine: ${engine}`,
-    `Şema: ${model.schemas.length} | Tablo: ${totalTables} | Kolon: ${totalColumns} | İlişki: ${model.relations.length}`,
-    `DOT boyutu: ${dotSizeKB}KB`,
+    `Detay: ${detail_level} | Formatlar: ${formats.join(', ')} | Engine: ${engine_override ?? 'auto'}`,
+    `Şema: ${fullModel.schemas.length} | Tablo: ${totalTables} | Kolon: ${totalColumns} | İlişki: ${fullModel.relations.length}`,
     `Tarih: ${new Date().toISOString()}`,
     '',
   ].join('\n');
   fs.writeFileSync(logPath, header, 'utf-8');
 
-  // Check Graphviz availability for formats that need it
+  // Check Graphviz
   const needsGraphviz = formats.some((f) => f === 'svg' || f === 'png' || f === 'html');
   let graphvizAvailable = false;
   if (needsGraphviz) {
@@ -95,78 +113,106 @@ export async function generateERDiagram(options: GenerateEROptions): Promise<str
     }
   }
 
-  // Ensure output dir exists
-  if (!fs.existsSync(output_dir)) {
-    fs.mkdirSync(output_dir, { recursive: true });
-  }
+  // --- Generate combined (full) outputs → er_{db}/ root ---
+  const fullEngine: GraphvizEngine = engine_override ?? selectEngine(fullModel);
+  const fullDot = renderDot(fullModel);
+  logger.info(`Birleşik DOT: ${Math.round(fullDot.length / 1024)}KB, engine=${fullEngine}`);
 
-  // DOT output
   if (formats.includes('dot')) {
-    const dotPath = path.join(output_dir, makeFilename(profile.db_alias, detail_level, 'dot'));
-    saveDotFile(dotString, dotPath);
+    const dotPath = path.join(dbDir, makeFilename(profile.db_alias, detail_level, 'dot'));
+    saveDotFile(fullDot, dotPath);
     outputFiles.push(dotPath);
-    logger.info(`DOT dosyası: ${dotPath}`);
+    logger.info(`DOT: ${path.basename(dotPath)}`);
   }
 
-  // Mermaid output
   if (formats.includes('mermaid')) {
-    const mmdString = renderMermaid(model);
-    const mmdPath = path.join(output_dir, makeFilename(profile.db_alias, detail_level, 'mmd'));
+    const mmdString = renderMermaid(fullModel);
+    const mmdPath = path.join(dbDir, makeFilename(profile.db_alias, detail_level, 'mmd'));
     fs.writeFileSync(mmdPath, mmdString, 'utf-8');
     outputFiles.push(mmdPath);
-    logger.info(`Mermaid dosyası: ${mmdPath}`);
+    logger.info(`Mermaid: ${path.basename(mmdPath)}`);
   }
 
-  // SVG output
-  if (formats.includes('svg') && graphvizAvailable) {
-    const svgPath = path.join(output_dir, makeFilename(profile.db_alias, detail_level, 'svg'));
+  // Combined SVG
+  let fullSvgContent = '';
+  if ((formats.includes('svg') || formats.includes('html')) && graphvizAvailable) {
     try {
-      await renderWithGraphviz(dotString, 'svg', svgPath, engine);
-      outputFiles.push(svgPath);
-      logger.info(`SVG dosyası: ${svgPath}`);
+      fullSvgContent = await renderToSvgString(fullDot, fullEngine);
+      if (formats.includes('svg')) {
+        const svgPath = path.join(dbDir, makeFilename(profile.db_alias, detail_level, 'svg'));
+        fs.writeFileSync(svgPath, fullSvgContent, 'utf-8');
+        outputFiles.push(svgPath);
+        logger.info(`SVG (birleşik): ${path.basename(svgPath)}`);
+      }
     } catch (err: any) {
-      logger.error(`SVG üretilemedi: ${err.message}`);
-      // Still save DOT if not already saved
+      logger.error(`Birleşik SVG üretilemedi: ${err.message}`);
       if (!formats.includes('dot') && !outputFiles.some((f) => f.endsWith('.dot'))) {
-        const fallbackDot = path.join(output_dir, makeFilename(profile.db_alias, detail_level, 'dot'));
-        saveDotFile(dotString, fallbackDot);
+        const fallbackDot = path.join(dbDir, makeFilename(profile.db_alias, detail_level, 'dot'));
+        saveDotFile(fullDot, fallbackDot);
         outputFiles.push(fallbackDot);
-        logger.info(`Fallback DOT dosyası: ${fallbackDot}`);
       }
     }
   }
 
-  // PNG output
+  // Combined PNG
   if (formats.includes('png') && graphvizAvailable) {
-    const pngPath = path.join(output_dir, makeFilename(profile.db_alias, detail_level, 'png'));
+    const pngPath = path.join(dbDir, makeFilename(profile.db_alias, detail_level, 'png'));
     try {
-      await renderWithGraphviz(dotString, 'png', pngPath, engine);
+      await renderWithGraphviz(fullDot, 'png', pngPath, fullEngine);
       outputFiles.push(pngPath);
-      logger.info(`PNG dosyası: ${pngPath}`);
+      logger.info(`PNG (birleşik): ${path.basename(pngPath)}`);
     } catch (err: any) {
       logger.error(`PNG üretilemedi: ${err.message}`);
     }
   }
 
-  // HTML output (requires SVG via Graphviz)
-  if (formats.includes('html') && graphvizAvailable) {
+  // --- Generate per-schema SVGs → er_{db}/{schema}/ ---
+  const schemaSvgMap: Record<string, string> = {};
+
+  if (graphvizAvailable && targetSchemas.length > 1 && (formats.includes('svg') || formats.includes('html'))) {
+    logger.info(`Şema başına SVG üretimi: ${targetSchemas.length} şema`);
+
+    for (const schemaName of targetSchemas) {
+      try {
+        const filtered = filterERModel(fullModel, [schemaName]);
+        const filteredTableCount = filtered.schemas.reduce((sum, s) => sum + s.tables.length, 0);
+
+        if (filteredTableCount === 0) {
+          logger.warn(`  ${schemaName}: tablo yok, atlanıyor`);
+          continue;
+        }
+
+        const filteredDot = renderDot(filtered);
+        const filteredEngine: GraphvizEngine = engine_override ?? selectEngine(filtered);
+        const svgStr = await renderToSvgString(filteredDot, filteredEngine);
+        schemaSvgMap[schemaName] = svgStr;
+
+        // Save per-schema SVG → er_{db}/{schema}/
+        if (formats.includes('svg')) {
+          const schemaDir = path.join(dbDir, schemaName);
+          ensureDir(schemaDir);
+          const svgPath = path.join(schemaDir, makeFilename(profile.db_alias, detail_level, 'svg', schemaName));
+          fs.writeFileSync(svgPath, svgStr, 'utf-8');
+          outputFiles.push(svgPath);
+        }
+
+        logger.info(`  ${schemaName}: ${filteredTableCount} tablo, ${filtered.relations.length} ilişki, engine=${filteredEngine}`);
+      } catch (err: any) {
+        logger.error(`  ${schemaName}: SVG üretilemedi — ${err.message}`);
+      }
+    }
+  }
+
+  // --- HTML output → er_{db}/ root ---
+  if (formats.includes('html') && graphvizAvailable && fullSvgContent) {
     try {
-      logger.debug(`HTML için SVG string render: engine=${engine}`);
-      const svgContent = await renderToSvgString(dotString, engine);
-      logger.debug(`SVG string alındı: ${Math.round(svgContent.length / 1024)}KB`);
-      const htmlContent = renderHtml(model, svgContent, template_dir);
-      const htmlPath = path.join(output_dir, makeFilename(profile.db_alias, detail_level, 'html'));
+      const htmlContent = renderHtml(fullModel, fullSvgContent, schemaSvgMap, template_dir);
+      const htmlPath = path.join(dbDir, makeFilename(profile.db_alias, detail_level, 'html'));
       fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
       outputFiles.push(htmlPath);
-      logger.info(`HTML dosyası: ${htmlPath} (${Math.round(htmlContent.length / 1024)}KB)`);
+      logger.info(`HTML: ${path.basename(htmlPath)} (${Math.round(htmlContent.length / 1024)}KB, ${Object.keys(schemaSvgMap).length} şema SVG embed)`);
     } catch (err: any) {
       logger.error(`HTML üretilemedi: ${err.message}`);
-      if (!formats.includes('dot') && !outputFiles.some((f) => f.endsWith('.dot'))) {
-        const fallbackDot = path.join(output_dir, makeFilename(profile.db_alias, detail_level, 'dot'));
-        saveDotFile(dotString, fallbackDot);
-        outputFiles.push(fallbackDot);
-        logger.info(`Fallback DOT dosyası: ${fallbackDot}`);
-      }
     }
   }
 
@@ -177,7 +223,7 @@ export async function generateERDiagram(options: GenerateEROptions): Promise<str
     '',
     '='.repeat(60),
     `SONUÇ: ${outputFiles.length} dosya üretildi, süre=${elapsed}sn`,
-    ...outputFiles.map((f) => `  - ${path.basename(f)}`),
+    ...outputFiles.map((f) => `  - ${path.relative(output_dir, f)}`),
     '',
   ].join('\n');
   fs.appendFileSync(logPath, summary, 'utf-8');

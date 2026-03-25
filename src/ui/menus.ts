@@ -17,7 +17,7 @@ import { DiffHtmlReportGenerator } from '../report/diff-html-report.js';
 import type { AppConfig } from '../config/types.js';
 import type { BaseConnector } from '../connectors/base-connector.js';
 import type { DatabaseProfile, TableInfo } from '../profiler/types.js';
-import type { DetailLevel, EROutputFormat } from '../er-diagram/types.js';
+import type { DetailLevel, EROutputFormat, GraphvizEngine } from '../er-diagram/types.js';
 import { generateERDiagram } from '../er-diagram/er-generator.js';
 import { checkGraphviz } from '../er-diagram/graphviz.js';
 
@@ -748,8 +748,30 @@ async function erDiagramFlow(config: AppConfig, pkgRoot: string): Promise<void> 
   if (p.isCancel(formats)) return;
   const selectedFormats = formats as EROutputFormat[];
 
-  // 5. Check Graphviz if needed
+  // 5. Engine selection (only if Graphviz formats are selected)
   const needsGraphviz = selectedFormats.some((f) => f === 'svg' || f === 'png' || f === 'html');
+  let engineOverride: GraphvizEngine | undefined;
+  if (needsGraphviz) {
+    await resetStdin();
+    const engineChoice = await p.select({
+      message: 'Graphviz engine secin:',
+      options: [
+        { value: 'auto', label: 'Otomatik (Onerilen)', hint: 'Graf buyuklugune gore otomatik sec' },
+        { value: 'dot' as GraphvizEngine, label: 'dot', hint: 'Hiyerarsik layout (kucuk-orta graflar)' },
+        { value: 'neato' as GraphvizEngine, label: 'neato', hint: 'Spring model (orta graflar)' },
+        { value: 'fdp' as GraphvizEngine, label: 'fdp', hint: 'Force-directed (orta graflar)' },
+        { value: 'sfdp' as GraphvizEngine, label: 'sfdp', hint: 'Scalable force-directed (buyuk graflar)' },
+        { value: 'circo' as GraphvizEngine, label: 'circo', hint: 'Dairesel layout' },
+        { value: 'twopi' as GraphvizEngine, label: 'twopi', hint: 'Radial layout' },
+      ],
+    });
+    if (p.isCancel(engineChoice)) return;
+    if (engineChoice !== 'auto') {
+      engineOverride = engineChoice as GraphvizEngine;
+    }
+  }
+
+  // 6. Check Graphviz if needed
   if (needsGraphviz) {
     const gvAvailable = await checkGraphviz();
     if (!gvAvailable) {
@@ -764,18 +786,35 @@ async function erDiagramFlow(config: AppConfig, pkgRoot: string): Promise<void> 
     }
   }
 
-  // 6. Generate for each JSON
+  // 7. Generate for each JSON
   const templateDir = path.join(pkgRoot, 'templates');
   let totalFiles = 0;
 
   for (const fileName of chosenFiles) {
     const jsonPath = path.join(outDir, fileName);
-    const s = p.spinner();
-    s.start(`ER diyagrami uretiliyor: ${fileName}`);
 
+    // Schema selection: if profile has multiple schemas, let user pick
+    let schemaFilter: string[] | undefined;
     try {
       const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
       const profile = dictToProfile(data);
+
+      const schemaNames = profile.schemas.map((sc) => sc.schema_name);
+      if (schemaNames.length > 1) {
+        await resetStdin();
+        const chosenSchemas = await multiSelectWithAll(
+          `${fileName} — Sema secin:`,
+          schemaNames.map((sn) => ({ value: sn, label: sn })),
+        );
+        if (chosenSchemas.length === 0) continue;
+        // If not all schemas selected, apply filter
+        if (chosenSchemas.length < schemaNames.length) {
+          schemaFilter = chosenSchemas;
+        }
+      }
+
+      const s = p.spinner();
+      s.start(`ER diyagrami uretiliyor: ${fileName}${schemaFilter ? ` (${schemaFilter.join(', ')})` : ''}`);
 
       const outputFiles = await generateERDiagram({
         profile,
@@ -783,6 +822,8 @@ async function erDiagramFlow(config: AppConfig, pkgRoot: string): Promise<void> 
         formats: selectedFormats,
         output_dir: outDir,
         template_dir: templateDir,
+        schema_filter: schemaFilter,
+        engine_override: engineOverride,
       });
 
       totalFiles += outputFiles.length;
@@ -811,7 +852,7 @@ async function erDiagramFlow(config: AppConfig, pkgRoot: string): Promise<void> 
       }
     } catch (e: any) {
       const msg = e?.message ?? String(e);
-      s.stop(`${SYM.fail} ${fileName}`);
+      p.log.error(`${SYM.fail} ${fileName}`);
       p.log.error(chalk.red(`  Hata: ${msg}`));
       if (msg.includes('zaman aşımı') || msg.includes('timeout') || msg.includes('overflow') || msg.includes('minimal')) {
         p.log.warn(chalk.yellow('  İpucu: Daha küçük bir detay seviyesi (minimal) veya daha az tablo deneyin.'));

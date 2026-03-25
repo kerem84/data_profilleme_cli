@@ -1,5 +1,7 @@
 /**
- * Renders an interactive HTML page embedding SVG ER diagram.
+ * Renders an interactive HTML page embedding per-schema SVGs.
+ * Schema dropdown switches between dedicated SVG containers.
+ * "Tüm Şemalar" shows the combined full SVG.
  */
 
 import fs from 'node:fs';
@@ -41,7 +43,6 @@ function buildTableMeta(model: ERModel): Record<string, TableMeta> {
 function buildEdgeMeta(model: ERModel): Record<string, EdgeMeta> {
   const meta: Record<string, EdgeMeta> = {};
   for (const rel of model.relations) {
-    // Edge title in Graphviz: "from_schema.from_table"->"to_schema.to_table"
     const edgeKey = `"${rel.from_schema}.${rel.from_table}"->"${rel.to_schema}.${rel.to_table}"`;
     meta[edgeKey] = {
       constraint: rel.constraint_name,
@@ -54,7 +55,18 @@ function buildEdgeMeta(model: ERModel): Record<string, EdgeMeta> {
   return meta;
 }
 
-export function renderHtml(model: ERModel, svgContent: string, templateDir: string): string {
+/**
+ * @param model        Full ERModel (for metadata)
+ * @param fullSvg      Combined SVG content (all schemas)
+ * @param schemaSvgMap Per-schema SVG content keyed by schema name
+ * @param templateDir  Path to templates directory
+ */
+export function renderHtml(
+  model: ERModel,
+  fullSvg: string,
+  schemaSvgMap: Record<string, string>,
+  templateDir: string,
+): string {
   const env = nunjucks.configure(templateDir, { autoescape: true });
   env.addFilter('tojson', (val: unknown) => JSON.stringify(val));
 
@@ -73,13 +85,20 @@ export function renderHtml(model: ERModel, svgContent: string, templateDir: stri
   const tableMeta = buildTableMeta(model);
   const edgeMeta = buildEdgeMeta(model);
 
+  // Build schema SVG entries for template
+  const schemaSvgEntries = schemaNames
+    .filter((name) => schemaSvgMap[name])
+    .map((name) => ({ name, svg: schemaSvgMap[name] }));
+
   return env.render('er-diagram.html.j2', {
     db_alias: model.db_alias,
     detail_level: model.detail_level,
     schemas: schemaNames,
     table_count: tableCount,
     relation_count: model.relations.length,
-    svg_content: svgContent,
+    svg_content: fullSvg,
+    schema_svgs: schemaSvgEntries,
+    has_per_schema: schemaSvgEntries.length > 0,
     table_meta: tableMeta,
     edge_meta: edgeMeta,
     css_content: cssContent,

@@ -13,7 +13,7 @@
     <input type="text" id="er-search" class="er-search" placeholder="Tablo ara...">
     {% if schemas | length > 1 %}
     <select id="er-schema-filter" class="er-schema-filter">
-      <option value="">Tüm Şemalar</option>
+      <option value="">Tüm Şemalar ({{ table_count }})</option>
       {% for s in schemas %}
       <option value="{{ s }}">{{ s }}</option>
       {% endfor %}
@@ -33,9 +33,19 @@
   </div>
 
   <div id="er-container" class="er-container">
-    <div id="er-svg-wrapper" class="er-svg-wrapper">
+    {# Combined (all schemas) SVG — shown by default #}
+    <div id="er-svg-wrapper" class="er-svg-wrapper er-svg-layer" data-schema="">
       {{ svg_content | safe }}
     </div>
+
+    {# Per-schema SVGs — hidden by default #}
+    {% if has_per_schema %}
+    {% for entry in schema_svgs %}
+    <div class="er-svg-wrapper er-svg-layer" data-schema="{{ entry.name }}" style="display:none">
+      {{ entry.svg | safe }}
+    </div>
+    {% endfor %}
+    {% endif %}
   </div>
 
   <div id="er-tooltip" class="er-tooltip"></div>
@@ -43,6 +53,7 @@
   <script>
     window.ER_TABLE_META = {{ table_meta | tojson | safe }};
     window.ER_EDGE_META = {{ edge_meta | tojson | safe }};
+    window.ER_HAS_PER_SCHEMA = {{ has_per_schema | tojson | safe }};
   </script>
   <script>{{ js_content | safe }}</script>
 </body>

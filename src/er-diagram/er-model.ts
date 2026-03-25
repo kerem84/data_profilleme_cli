@@ -124,3 +124,87 @@ export function buildERModel(profile: DatabaseProfile, level: DetailLevel): ERMo
     detail_level: level,
   };
 }
+
+/**
+ * Filter an ERModel to include only tables from selected schemas.
+ * Cross-schema FK targets are represented as phantom (ghost) nodes
+ * with no columns — just table name + dashed border in the diagram.
+ * Relations are kept if at least one endpoint belongs to selected schemas.
+ */
+export function filterERModel(model: ERModel, schemaNames: string[]): ERModel {
+  const selectedSet = new Set(schemaNames);
+  const includedTables = new Set<string>(); // "schema.table"
+
+  // 1. Collect tables that belong to selected schemas
+  for (const schema of model.schemas) {
+    if (!selectedSet.has(schema.schema_name)) continue;
+    for (const table of schema.tables) {
+      includedTables.add(`${schema.schema_name}.${table.table_name}`);
+    }
+  }
+
+  // 2. Find cross-schema FK targets/sources that need phantom nodes
+  const phantomNeeded = new Set<string>(); // "schema.table" keys needing ghost nodes
+  const relevantRelations: ERRelation[] = [];
+
+  for (const rel of model.relations) {
+    const fromKey = `${rel.from_schema}.${rel.from_table}`;
+    const toKey = `${rel.to_schema}.${rel.to_table}`;
+    const fromIn = includedTables.has(fromKey);
+    const toIn = includedTables.has(toKey);
+
+    if (fromIn && toIn) {
+      // Both endpoints in selected schemas — keep as is
+      relevantRelations.push(rel);
+    } else if (fromIn && !toIn) {
+      // FK source in selected, target outside — phantom target
+      relevantRelations.push(rel);
+      phantomNeeded.add(toKey);
+    } else if (!fromIn && toIn) {
+      // FK source outside, target in selected — phantom source
+      relevantRelations.push(rel);
+      phantomNeeded.add(fromKey);
+    }
+    // Both outside → skip entirely
+  }
+
+  // 3. Build filtered schemas with real tables
+  const filteredSchemas: ERSchema[] = [];
+  for (const schema of model.schemas) {
+    if (!selectedSet.has(schema.schema_name)) continue;
+    const tables = schema.tables.filter(
+      (t) => includedTables.has(`${schema.schema_name}.${t.table_name}`),
+    );
+    if (tables.length > 0) {
+      filteredSchemas.push({ schema_name: schema.schema_name, tables });
+    }
+  }
+
+  // 4. Add phantom nodes for cross-schema references
+  for (const phantomKey of phantomNeeded) {
+    const [pSchema, pTable] = phantomKey.split('.');
+    if (!pSchema || !pTable) continue;
+
+    let targetSchema = filteredSchemas.find((s) => s.schema_name === pSchema);
+    if (!targetSchema) {
+      targetSchema = { schema_name: pSchema, tables: [] };
+      filteredSchemas.push(targetSchema);
+    }
+    // Only add if not already present
+    if (!targetSchema.tables.some((t) => t.table_name === pTable)) {
+      targetSchema.tables.push({
+        schema_name: pSchema,
+        table_name: pTable,
+        columns: [],
+        is_phantom: true,
+      });
+    }
+  }
+
+  return {
+    db_alias: model.db_alias,
+    schemas: filteredSchemas,
+    relations: relevantRelations,
+    detail_level: model.detail_level,
+  };
+}
