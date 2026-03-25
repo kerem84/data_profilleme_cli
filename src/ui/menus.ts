@@ -17,6 +17,9 @@ import { DiffHtmlReportGenerator } from '../report/diff-html-report.js';
 import type { AppConfig } from '../config/types.js';
 import type { BaseConnector } from '../connectors/base-connector.js';
 import type { DatabaseProfile, TableInfo } from '../profiler/types.js';
+import type { DetailLevel, EROutputFormat } from '../er-diagram/types.js';
+import { generateERDiagram } from '../er-diagram/er-generator.js';
+import { checkGraphviz } from '../er-diagram/graphviz.js';
 
 /* ------------------------------------------------------------------ */
 /*  Top-level entry                                                    */
@@ -116,6 +119,7 @@ async function showMainMenu(config: AppConfig, pkgRoot: string): Promise<void> {
         { value: 'profile', label: 'Veritabani Profille', hint: 'Sema kesfi + profilleme + rapor' },
         { value: 'report', label: "JSON'dan Rapor Uret", hint: 'Mevcut profil JSON dosyasindan rapor' },
         { value: 'diff', label: 'Profil Karsilastir', hint: 'Iki profil JSON arasindaki farklari goster' },
+        { value: 'er', label: 'ER Diyagrami Olustur', hint: 'Profil JSON\'dan ER diyagrami uret' },
         { value: 'test', label: 'Baglanti Testi', hint: 'Veritabani baglantilarini test et' },
         { value: 'exit', label: 'Cikis' },
       ],
@@ -131,6 +135,9 @@ async function showMainMenu(config: AppConfig, pkgRoot: string): Promise<void> {
         break;
       case 'diff':
         await diffFlow(config, pkgRoot);
+        break;
+      case 'er':
+        await erDiagramFlow(config, pkgRoot);
         break;
       case 'test':
         await connectionTestFlow(config);
@@ -679,6 +686,143 @@ async function connectionTestFlow(config: AppConfig): Promise<void> {
   }
 
   p.note(results.join('\n'), 'Baglanti Test Sonuclari');
+}
+
+/* ------------------------------------------------------------------ */
+/*  ER Diagram flow                                                    */
+/* ------------------------------------------------------------------ */
+
+async function erDiagramFlow(config: AppConfig, pkgRoot: string): Promise<void> {
+  // 1. Find JSON files in output dir
+  const outDir = path.resolve(config.outputDir);
+  let jsonFiles: string[] = [];
+  if (fs.existsSync(outDir)) {
+    jsonFiles = fs.readdirSync(outDir)
+      .filter((f) => f.startsWith('profil_') && f.endsWith('.json'))
+      .sort()
+      .reverse();
+  }
+
+  if (jsonFiles.length === 0) {
+    p.log.warn(`${outDir} dizininde profil JSON bulunamadi.`);
+    return;
+  }
+
+  // 2. Select JSON files (multiselect)
+  const shown = jsonFiles.slice(0, 15);
+  const chosenFiles = await multiSelectWithAll(
+    'ER diyagrami uretilecek JSON dosyalari secin:',
+    shown.map((f) => ({
+      value: f,
+      label: f.replace('profil_', '').replace('.json', ''),
+    })),
+  );
+  if (chosenFiles.length === 0) return;
+
+  // 3. Select detail level
+  await resetStdin();
+  const level = await p.select({
+    message: 'Detay seviyesi secin:',
+    options: [
+      { value: 'minimal' as DetailLevel, label: 'Minimal', hint: 'Sadece tablo adlari (buyuk semalar icin)' },
+      { value: 'medium' as DetailLevel, label: 'Medium', hint: 'Tablo adi + PK/FK kolonlari' },
+      { value: 'full' as DetailLevel, label: 'Full', hint: 'Tum kolonlar, veri tipleri, constraint ikonlari' },
+    ],
+  });
+  if (p.isCancel(level)) return;
+
+  // 4. Select output formats (multiselect)
+  await resetStdin();
+  const formats = await p.multiselect({
+    message: 'Cikti formatlari secin:',
+    options: [
+      { value: 'svg' as EROutputFormat, label: 'SVG', hint: 'Vektorel (Graphviz gerekli)' },
+      { value: 'png' as EROutputFormat, label: 'PNG', hint: 'Raster (Graphviz gerekli)' },
+      { value: 'html' as EROutputFormat, label: 'HTML', hint: 'Interaktif (Graphviz gerekli)' },
+      { value: 'mermaid' as EROutputFormat, label: 'Mermaid', hint: '.mmd dosyasi' },
+      { value: 'dot' as EROutputFormat, label: 'DOT', hint: 'Graphviz kaynak dosyasi' },
+    ],
+    required: true,
+    initialValues: ['svg' as EROutputFormat, 'html' as EROutputFormat],
+  });
+  if (p.isCancel(formats)) return;
+  const selectedFormats = formats as EROutputFormat[];
+
+  // 5. Check Graphviz if needed
+  const needsGraphviz = selectedFormats.some((f) => f === 'svg' || f === 'png' || f === 'html');
+  if (needsGraphviz) {
+    const gvAvailable = await checkGraphviz();
+    if (!gvAvailable) {
+      p.log.error(
+        'Graphviz kurulu degil. SVG/PNG/HTML formatlari icin Graphviz gereklidir.\n' +
+        'Kurulum: https://graphviz.org/download/\n' +
+        'Windows: winget install Graphviz\n' +
+        'macOS: brew install graphviz\n' +
+        'Ubuntu/Debian: sudo apt install graphviz',
+      );
+      return;
+    }
+  }
+
+  // 6. Generate for each JSON
+  const templateDir = path.join(pkgRoot, 'templates');
+  let totalFiles = 0;
+
+  for (const fileName of chosenFiles) {
+    const jsonPath = path.join(outDir, fileName);
+    const s = p.spinner();
+    s.start(`ER diyagrami uretiliyor: ${fileName}`);
+
+    try {
+      const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      const profile = dictToProfile(data);
+
+      const outputFiles = await generateERDiagram({
+        profile,
+        detail_level: level as DetailLevel,
+        formats: selectedFormats,
+        output_dir: outDir,
+        template_dir: templateDir,
+      });
+
+      totalFiles += outputFiles.length;
+
+      if (profile.schemas.every((sc) => sc.tables.every((t) => t.columns.every((c) => !c.is_foreign_key)))) {
+        s.stop(`${SYM.ok} ${fileName} (FK iliskisi yok - sadece tablolar)`);
+      } else {
+        s.stop(`${SYM.ok} ${fileName} - ${outputFiles.length} dosya uretildi`);
+      }
+
+      const logFiles = outputFiles.filter((f) => f.endsWith('.log'));
+      const dataFiles = outputFiles.filter((f) => !f.endsWith('.log'));
+
+      for (const f of dataFiles) {
+        p.log.info(`  ${chalk.dim(path.basename(f))}`);
+      }
+      for (const f of logFiles) {
+        p.log.warn(`  ${chalk.yellow('⚠ Log:')} ${chalk.dim(path.basename(f))}`);
+      }
+
+      if (dataFiles.length === 0) {
+        s.stop(`${SYM.fail} ${fileName}: Hiçbir çıktı üretilemedi.`);
+        if (logFiles.length > 0) {
+          p.log.error(chalk.red(`  Detaylar: ${logFiles[0]}`));
+        }
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? String(e);
+      s.stop(`${SYM.fail} ${fileName}`);
+      p.log.error(chalk.red(`  Hata: ${msg}`));
+      if (msg.includes('zaman aşımı') || msg.includes('timeout') || msg.includes('overflow') || msg.includes('minimal')) {
+        p.log.warn(chalk.yellow('  İpucu: Daha küçük bir detay seviyesi (minimal) veya daha az tablo deneyin.'));
+      }
+    }
+  }
+
+  p.note(
+    `${totalFiles} dosya uretildi\nCikti: ${outDir}`,
+    'ER Diyagrami Tamamlandi',
+  );
 }
 
 /* ------------------------------------------------------------------ */
