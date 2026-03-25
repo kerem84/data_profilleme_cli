@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ER Diyagramı — {{ db_alias }}</title>
+  <style>{{ css_content | safe }}</style>
+</head>
+<body>
+  <div class="er-toolbar">
+    <h1>{{ db_alias }} — ER Diyagramı ({{ detail_level }})</h1>
+    <span class="separator"></span>
+    <input type="text" id="er-search" class="er-search" placeholder="Tablo ara...">
+    {% if schemas | length > 1 %}
+    <select id="er-schema-filter" class="er-schema-filter">
+      <option value="">Tüm Şemalar</option>
+      {% for s in schemas %}
+      <option value="{{ s }}">{{ s }}</option>
+      {% endfor %}
+    </select>
+    {% else %}
+    <select id="er-schema-filter" class="er-schema-filter" style="display:none">
+      <option value="">Tüm Şemalar</option>
+    </select>
+    {% endif %}
+    <div class="er-zoom-controls">
+      <button onclick="erZoomOut()" title="Uzaklaştır">−</button>
+      <span id="er-zoom-level" class="er-zoom-level">100%</span>
+      <button onclick="erZoomIn()" title="Yakınlaştır">+</button>
+      <button onclick="erZoomReset()" title="Sıfırla">↺</button>
+    </div>
+    <span class="er-info">{{ table_count }} tablo · {{ relation_count }} ilişki</span>
+  </div>
+
+  <div id="er-container" class="er-container">
+    <div id="er-svg-wrapper" class="er-svg-wrapper">
+      {{ svg_content | safe }}
+    </div>
+  </div>
+
+  <div id="er-tooltip" class="er-tooltip"></div>
+
+  <script>
+    window.ER_TABLE_META = {{ table_meta | tojson | safe }};
+    window.ER_EDGE_META = {{ edge_meta | tojson | safe }};
+  </script>
+  <script>{{ js_content | safe }}</script>
+</body>
+</html>

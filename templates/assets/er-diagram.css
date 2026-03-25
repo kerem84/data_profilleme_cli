@@ -1,0 +1,171 @@
+/* ER Diagram Interactive HTML Styles */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f8f9fa;
+  color: #333;
+  overflow: hidden;
+  height: 100vh;
+}
+
+.er-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  z-index: 10;
+  position: relative;
+}
+
+.er-toolbar h1 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+  white-space: nowrap;
+}
+
+.er-toolbar .separator {
+  width: 1px;
+  height: 24px;
+  background: #e0e0e0;
+}
+
+.er-search {
+  padding: 6px 12px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 13px;
+  width: 220px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.er-search:focus {
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 2px rgba(74,144,217,0.15);
+}
+
+.er-schema-filter {
+  padding: 6px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+}
+
+.er-zoom-controls {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.er-zoom-controls button {
+  padding: 4px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.15s;
+}
+
+.er-zoom-controls button:hover {
+  background: #f0f0f0;
+}
+
+.er-zoom-level {
+  font-size: 12px;
+  color: #888;
+  min-width: 40px;
+  text-align: center;
+  line-height: 28px;
+}
+
+.er-info {
+  font-size: 12px;
+  color: #888;
+}
+
+.er-container {
+  width: 100%;
+  height: calc(100vh - 50px);
+  overflow: hidden;
+  cursor: grab;
+  position: relative;
+}
+
+.er-container:active {
+  cursor: grabbing;
+}
+
+.er-svg-wrapper {
+  transform-origin: 0 0;
+  transition: none;
+}
+
+/* Highlight matched tables, dim unmatched */
+.er-container svg .node.er-dimmed polygon,
+.er-container svg .node.er-dimmed ellipse,
+.er-container svg .node.er-dimmed path {
+  opacity: 0.2;
+}
+
+.er-container svg .node.er-dimmed text {
+  opacity: 0.2;
+}
+
+.er-container svg .edge.er-dimmed path,
+.er-container svg .edge.er-dimmed polygon {
+  opacity: 0.15;
+}
+
+.er-container svg .edge.er-dimmed text {
+  opacity: 0.15;
+}
+
+.er-container svg .node.er-highlight polygon,
+.er-container svg .node.er-highlight ellipse,
+.er-container svg .node.er-highlight path {
+  stroke: #e67e22;
+  stroke-width: 3;
+}
+
+/* Tooltip */
+.er-tooltip {
+  position: fixed;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  pointer-events: none;
+  z-index: 100;
+  max-width: 300px;
+  display: none;
+}
+
+.er-tooltip .tt-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: #1a1a1a;
+}
+
+.er-tooltip .tt-meta {
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.er-tooltip .tt-cols {
+  border-top: 1px solid #eee;
+  padding-top: 4px;
+  line-height: 1.6;
+}
