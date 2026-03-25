@@ -1,5 +1,6 @@
 # @intellica/data-profiler
-<img width="970" height="589" alt="image" src="https://github.com/user-attachments/assets/40d9b20d-3888-49cd-ada0-bcbb634d58e1" />
+<img width="943" height="629" alt="image" src="https://github.com/user-attachments/assets/ae3a3e8f-2b9b-4f3e-bc4e-3adf21b29cc3" />
+
 
 
 Kaynak veritabani tablolarini otomatik profilleme araci. PostgreSQL, MSSQL ve Oracle veritabanlarina baglanarak tablo ve kolon bazinda kalite analizi yapar, Excel ve HTML raporlari uretir.
