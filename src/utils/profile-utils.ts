@@ -20,6 +20,7 @@ export function dictToProfile(data: Record<string, unknown>): DatabaseProfile {
         top_n_values: c.top_n_values ?? [],
         quality_flags: c.quality_flags ?? [],
         dwh_targets: c.dwh_targets ?? [],
+        sensitivity: c.sensitivity ?? null,
       })),
       dwh_target_tables: t.dwh_target_tables ?? [],
       incremental_status: t.incremental_status ?? undefined,

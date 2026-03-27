@@ -1,6 +1,7 @@
 /**
  * App configuration types.
  */
+import type { SensitivityLevel } from '../metrics/sensitivity.js';
 
 export type DbType = 'postgresql' | 'mssql' | 'oracle' | 'hanabw';
 
@@ -39,6 +40,7 @@ export interface ProfilingConfig {
   concurrency: number;
   qualityWeights: QualityWeights;
   stringPatterns: Record<string, string>;
+  sensitivityThreshold: SensitivityLevel;
 }
 
 export interface MappingConfig {

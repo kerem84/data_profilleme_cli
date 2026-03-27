@@ -38,6 +38,7 @@ const profilingConfigSchema = z.object({
   concurrency: z.coerce.number().int().min(1).max(20).default(3),
   quality_weights: qualityWeightsSchema,
   string_patterns: z.record(z.string()).default({}),
+  sensitivity_threshold: z.enum(['none', 'low', 'medium', 'high']).default('low'),
 }).default({});
 
 const mappingConfigSchema = z.object({

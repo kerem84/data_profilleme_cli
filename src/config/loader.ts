@@ -72,6 +72,7 @@ export function loadConfig(configPath: string): AppConfig {
         validity: data.profiling.quality_weights.validity,
       },
       stringPatterns: data.profiling.string_patterns,
+      sensitivityThreshold: data.profiling.sensitivity_threshold,
     },
     mapping: {
       enabled: data.mapping.enabled,

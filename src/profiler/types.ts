@@ -1,6 +1,7 @@
 /**
  * Profile data types.
  */
+import type { SensitivityResult } from '../metrics/sensitivity.js';
 
 export interface TopNValue {
   value: string;
@@ -61,6 +62,8 @@ export interface ColumnProfile {
   quality_score: number;
   quality_grade: string;
   quality_flags: string[];
+  // Sensitivity
+  sensitivity: SensitivityResult | null;
   // Mapping
   dwh_mapped: boolean;
   dwh_targets: string[];
@@ -173,6 +176,7 @@ export function createDefaultColumnProfile(colMeta: Record<string, unknown>): Co
     quality_flags: [],
     dwh_mapped: false,
     dwh_targets: [],
+    sensitivity: null,
   };
 }
 
