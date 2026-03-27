@@ -13,6 +13,9 @@ import { calculateDiff } from './profiler/diff.js';
 import { DiffExcelReportGenerator } from './report/diff-excel-report.js';
 import { DiffHtmlReportGenerator } from './report/diff-html-report.js';
 import { setupLogger } from './utils/logger.js';
+import { SensitivityAnalyzer } from './metrics/sensitivity.js';
+import type { SensitivityLevel } from './metrics/sensitivity.js';
+import { ExcelReportGenerator } from './report/excel-report.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -86,6 +89,53 @@ program
       gen.generate(diff, htmlPath);
       console.log(`HTML:  ${htmlPath}`);
     }
+  });
+
+// Sensitivity scan subcommand
+program
+  .command('sensitivity')
+  .description('Profil JSON dosyasinda hassas veri taramasi yap (PII/KVKK)')
+  .argument('<json_path>', 'Profil JSON dosya yolu')
+  .option('-o, --output <dir>', 'Cikti dizini', './output')
+  .option('-t, --threshold <level>', 'Minimum sensitivity seviyesi (none|low|medium|high)', 'low')
+  .action(async (jsonPath: string, opts) => {
+    if (!fs.existsSync(jsonPath)) {
+      console.error(`Dosya bulunamadi: ${jsonPath}`);
+      process.exit(1);
+    }
+
+    const threshold = opts.threshold as SensitivityLevel;
+    const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+    const profile = dictToProfile(data);
+
+    console.log(`Profil: ${profile.db_alias} — ${profile.profiled_at}`);
+    console.log(`Threshold: ${threshold}\n`);
+
+    const findings = SensitivityAnalyzer.scanProfile(profile, threshold);
+
+    if (findings.length === 0) {
+      console.log('Hassas veri bulunamadi.');
+      return;
+    }
+
+    // Console summary
+    console.log(`${findings.length} hassas kolon tespit edildi:\n`);
+    const levelCounts = { high: 0, medium: 0, low: 0 };
+    for (const f of findings) {
+      const lvl = f.result.level as keyof typeof levelCounts;
+      if (lvl in levelCounts) levelCounts[lvl]++;
+      console.log(`  [${f.result.level.toUpperCase()}] ${f.schema}.${f.table}.${f.column} — ${f.result.category} (maskeleme: ${f.result.masking_suggestion})`);
+    }
+    console.log(`\nOzet: ${levelCounts.high} yuksek, ${levelCounts.medium} orta, ${levelCounts.low} dusuk`);
+
+    // Excel output
+    fs.mkdirSync(opts.output, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14).replace(/(\d{8})(\d{6})/, '$1_$2');
+    const excelPath = path.join(opts.output, `sensitivity_${profile.db_alias}_${timestamp}.xlsx`);
+
+    const gen = new ExcelReportGenerator(false, threshold);
+    await gen.generate(profile, excelPath);
+    console.log(`\nExcel: ${excelPath}`);
   });
 
 program.parse();
