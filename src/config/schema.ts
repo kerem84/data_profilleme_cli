@@ -37,7 +37,13 @@ const profilingConfigSchema = z.object({
   outlier_iqr_multiplier: z.number().positive().default(1.5),
   concurrency: z.coerce.number().int().min(1).max(20).default(3),
   quality_weights: qualityWeightsSchema,
-  string_patterns: z.record(z.string()).default({}),
+  string_patterns: z.record(z.string()).default({
+    email: '.+@.+\\..+',
+    phone_tr: '^(\\+90|0)[0-9]{10}$',
+    tc_kimlik: '^[1-9][0-9]{10}$',
+    iban: '^TR[0-9]{24}$',
+    credit_card: '^[0-9]{13,19}$',
+  }),
   sensitivity_threshold: z.enum(['none', 'low', 'medium', 'high']).default('low'),
 }).default({});
 
