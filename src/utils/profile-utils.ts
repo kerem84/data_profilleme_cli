@@ -90,7 +90,7 @@ export function generateReports(
       .replace('{db_alias}', profile.db_alias)
       .replace('{timestamp}', timestamp);
     const excelPath = path.join(outputDir, filename);
-    const gen = new ExcelReportGenerator(config.mapping.enabled);
+    const gen = new ExcelReportGenerator(config.mapping.enabled, config.profiling.sensitivityThreshold);
     gen.generate(profile, excelPath);
   }
 

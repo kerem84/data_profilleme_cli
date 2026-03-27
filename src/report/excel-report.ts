@@ -7,6 +7,8 @@ import path from 'node:path';
 import { getLogger } from '../utils/logger.js';
 import { QualityScorer } from '../metrics/quality.js';
 import type { DatabaseProfile, ColumnProfile, TableProfile } from '../profiler/types.js';
+import type { SensitivityLevel } from '../metrics/sensitivity.js';
+import { meetsThreshold } from '../metrics/sensitivity.js';
 
 // Styles
 const HEADER_FILL: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
@@ -21,6 +23,11 @@ const GRADE_FILLS: Record<string, ExcelJS.Fill> = {
   F: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4CCCC' } },
   'N/A': { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } },
 };
+const SENSITIVITY_FILLS: Record<string, ExcelJS.Fill> = {
+  high: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4CCCC' } },
+  medium: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4D6' } },
+  low: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } },
+};
 const THIN_BORDER: Partial<ExcelJS.Borders> = {
   top: { style: 'thin' },
   left: { style: 'thin' },
@@ -29,7 +36,10 @@ const THIN_BORDER: Partial<ExcelJS.Borders> = {
 };
 
 export class ExcelReportGenerator {
-  constructor(private mappingEnabled: boolean = false) {}
+  constructor(
+    private mappingEnabled: boolean = false,
+    private sensitivityThreshold: SensitivityLevel = 'low',
+  ) {}
 
   async generate(profile: DatabaseProfile, outputPath: string): Promise<string> {
     const logger = getLogger();
@@ -42,6 +52,7 @@ export class ExcelReportGenerator {
     this.writeTopValues(wb, profile);
     this.writePatternAnalysis(wb, profile);
     this.writeOutlierReport(wb, profile);
+    this.writeSensitivityInventory(wb, profile);
 
     const dir = path.dirname(outputPath);
     if (dir && dir !== '.') fs.mkdirSync(dir, { recursive: true });
@@ -324,6 +335,45 @@ export class ExcelReportGenerator {
           ws.getRow(r).getCell(9).value = col.outlier_count;
           ws.getRow(r).getCell(10).value = col.outlier_ratio;
           for (let c = 1; c <= 10; c++) ws.getRow(r).getCell(c).border = THIN_BORDER;
+          r++;
+        }
+      }
+    }
+    this.autoWidth(ws);
+  }
+
+  private writeSensitivityInventory(wb: ExcelJS.Workbook, profile: DatabaseProfile): void {
+    const ws = wb.addWorksheet('Hassas Veri Envanteri');
+    const headers = [
+      'Sema', 'Tablo', 'Kolon', 'Veri Tipi',
+      'Kategori', 'Seviye', 'Heuristic Eslesmesi', 'Pattern Orani',
+      'Maskeleme Onerisi',
+    ];
+    this.applyHeader(ws, headers);
+
+    let r = 2;
+    for (const schema of profile.schemas) {
+      for (const table of schema.tables) {
+        for (const col of table.columns) {
+          if (!col.sensitivity || col.sensitivity.level === 'none') continue;
+          if (!meetsThreshold(col.sensitivity.level, this.sensitivityThreshold)) continue;
+
+          const s = col.sensitivity;
+          ws.getRow(r).getCell(1).value = schema.schema_name;
+          ws.getRow(r).getCell(2).value = table.table_name;
+          ws.getRow(r).getCell(3).value = col.column_name;
+          ws.getRow(r).getCell(4).value = col.data_type;
+          ws.getRow(r).getCell(5).value = s.category;
+          const levelCell = ws.getRow(r).getCell(6);
+          levelCell.value = s.level;
+          levelCell.fill = SENSITIVITY_FILLS[s.level] ?? {};
+          ws.getRow(r).getCell(7).value = s.heuristic_match ? 'Evet' : 'Hayir';
+          ws.getRow(r).getCell(8).value = s.pattern_match_ratio > 0
+            ? Math.round(s.pattern_match_ratio * 10000) / 10000
+            : '';
+          ws.getRow(r).getCell(9).value = s.masking_suggestion;
+
+          for (let c = 1; c <= 9; c++) ws.getRow(r).getCell(c).border = THIN_BORDER;
           r++;
         }
       }
