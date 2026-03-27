@@ -20,6 +20,9 @@ import type { DatabaseProfile, TableInfo } from '../profiler/types.js';
 import type { DetailLevel, EROutputFormat, GraphvizEngine } from '../er-diagram/types.js';
 import { generateERDiagram } from '../er-diagram/er-generator.js';
 import { checkGraphviz } from '../er-diagram/graphviz.js';
+import { SensitivityAnalyzer } from '../metrics/sensitivity.js';
+import type { SensitivityLevel } from '../metrics/sensitivity.js';
+import { ExcelReportGenerator } from '../report/excel-report.js';
 
 /* ------------------------------------------------------------------ */
 /*  Top-level entry                                                    */
@@ -118,6 +121,7 @@ async function showMainMenu(config: AppConfig, pkgRoot: string): Promise<void> {
       options: [
         { value: 'profile', label: 'Veritabani Profille', hint: 'Sema kesfi + profilleme + rapor' },
         { value: 'report', label: "JSON'dan Rapor Uret", hint: 'Mevcut profil JSON dosyasindan rapor' },
+        { value: 'sensitivity', label: 'Hassas Veri Taramasi', hint: "Profil JSON'dan PII/KVKK tespiti" },
         { value: 'diff', label: 'Profil Karsilastir', hint: 'Iki profil JSON arasindaki farklari goster' },
         { value: 'er', label: 'ER Diyagrami Olustur', hint: 'Profil JSON\'dan ER diyagrami uret' },
         { value: 'test', label: 'Baglanti Testi', hint: 'Veritabani baglantilarini test et' },
@@ -132,6 +136,9 @@ async function showMainMenu(config: AppConfig, pkgRoot: string): Promise<void> {
         break;
       case 'report':
         await reportOnlyFlow(config, pkgRoot);
+        break;
+      case 'sensitivity':
+        await sensitivityFlow(config);
         break;
       case 'diff':
         await diffFlow(config, pkgRoot);
@@ -541,6 +548,104 @@ async function reportOnlyFlow(config: AppConfig, pkgRoot: string): Promise<void>
   }
 
   p.note(`${jsonPaths.length} rapor uretildi\nCikti: ${config.outputDir}`, 'Tamamlandi');
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sensitivity scan flow                                              */
+/* ------------------------------------------------------------------ */
+
+async function sensitivityFlow(config: AppConfig): Promise<void> {
+  const outDir = path.resolve(config.outputDir);
+  let jsonFiles: string[] = [];
+  if (fs.existsSync(outDir)) {
+    jsonFiles = fs.readdirSync(outDir)
+      .filter((f) => f.startsWith('profil_') && f.endsWith('.json'))
+      .sort()
+      .reverse();
+  }
+
+  let jsonPath: string;
+
+  if (jsonFiles.length > 0) {
+    await resetStdin();
+    const chosen = await p.select({
+      message: 'Taranacak profil JSON dosyasini secin:',
+      options: jsonFiles.slice(0, 10).map((f) => ({
+        value: path.join(outDir, f),
+        label: f.replace('profil_', '').replace('.json', ''),
+      })),
+    });
+    if (p.isCancel(chosen)) return;
+    jsonPath = chosen as string;
+  } else {
+    p.log.warn(`${outDir} dizininde profil JSON bulunamadi.`);
+    await resetStdin();
+    const manual = await promptJsonPath();
+    if (p.isCancel(manual) || !manual) return;
+    jsonPath = manual as string;
+  }
+
+  const s = p.spinner();
+  s.start('Hassas veri taramasi yapiliyor...');
+
+  try {
+    const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+    const profile = dictToProfile(data);
+    const threshold = config.profiling.sensitivityThreshold;
+    const findings = SensitivityAnalyzer.scanProfile(profile, threshold);
+
+    s.stop(`${SYM.ok} Tarama tamamlandi`);
+
+    if (findings.length === 0) {
+      p.log.info('Hassas veri bulunamadi.');
+      return;
+    }
+
+    const levelCounts = { high: 0, medium: 0, low: 0 };
+    for (const f of findings) {
+      const lvl = f.result.level as keyof typeof levelCounts;
+      if (lvl in levelCounts) levelCounts[lvl]++;
+    }
+
+    p.note(
+      [
+        `${findings.length} hassas kolon tespit edildi`,
+        `  Yuksek: ${levelCounts.high}`,
+        `  Orta:   ${levelCounts.medium}`,
+        `  Dusuk:  ${levelCounts.low}`,
+      ].join('\n'),
+      'Hassas Veri Ozeti',
+    );
+
+    const topFindings = findings.slice(0, 20);
+    for (const f of topFindings) {
+      const levelColor = f.result.level === 'high' ? C.error : f.result.level === 'medium' ? C.warn : C.dim;
+      p.log.info(
+        `${levelColor(`[${f.result.level.toUpperCase()}]`)} ${f.schema}.${f.table}.${C.bold(f.column)} — ${f.result.category}`,
+      );
+    }
+    if (findings.length > 20) {
+      p.log.info(C.dim(`... ve ${findings.length - 20} daha`));
+    }
+
+    await resetStdin();
+    const genExcel = await p.confirm({
+      message: 'Hassas veri envanteri Excel dosyasi olusturulsun mu?',
+      initialValue: true,
+    });
+    if (p.isCancel(genExcel) || !genExcel) return;
+
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14).replace(/(\d{8})(\d{6})/, '$1_$2');
+    const excelPath = path.join(config.outputDir, `sensitivity_${profile.db_alias}_${timestamp}.xlsx`);
+    fs.mkdirSync(config.outputDir, { recursive: true });
+
+    const gen = new ExcelReportGenerator(false, threshold);
+    await gen.generate(profile, excelPath);
+
+    p.log.success(`Excel: ${excelPath}`);
+  } catch (e) {
+    s.stop(`${SYM.fail} Tarama hatasi: ${e}`);
+  }
 }
 
 /* ------------------------------------------------------------------ */
