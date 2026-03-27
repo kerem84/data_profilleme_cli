@@ -63,7 +63,7 @@ const CATEGORY_REGISTRY: Record<SensitivityCategory, CategoryDef> = {
     masking_suggestion: '**** **** **** 1234',
   },
   person_name: {
-    keywords: ['isim', 'ad', 'soyad', 'name', 'first_name', 'last_name', 'adi', 'soyadi'],
+    keywords: ['isim', 'soyad', 'soyisim', 'first_name', 'last_name', 'firstname', 'lastname', 'soyadi'],
     pattern_key: null,
     masking_suggestion: 'M***',
   },
@@ -102,10 +102,15 @@ export class SensitivityAnalyzer {
     let best: SensitivityResult | null = null;
 
     const colNameLower = col.column_name.toLowerCase();
+    const colSegments = colNameLower.split(/[_\-.]/).filter(Boolean);
     const patterns = col.detected_patterns ?? {};
 
     for (const [cat, def] of Object.entries(CATEGORY_REGISTRY) as [SensitivityCategory, CategoryDef][]) {
-      const heuristic = def.keywords.some((kw) => colNameLower.includes(kw));
+      const heuristic = def.keywords.some((kw) =>
+        kw.includes('_')
+          ? colNameLower.includes(kw)                          // multi-word keywords: substring match (e.g. first_name, credit_card)
+          : colSegments.includes(kw),                          // single-word keywords: exact segment match (e.g. email, tel, iban)
+      );
       const patternRatio = def.pattern_key ? (patterns[def.pattern_key] ?? 0) : 0;
       const hasPattern = patternRatio > 0;
 
