@@ -512,6 +512,10 @@ export class Profiler {
     // Sensitivity analysis
     colProf.sensitivity = SensitivityAnalyzer.analyze(colProf);
 
+    if (colProf.sensitivity?.level === 'high' && !colProf.quality_flags.includes('suspected_pii')) {
+      colProf.quality_flags.push('suspected_pii');
+    }
+
     return colProf;
   }
 

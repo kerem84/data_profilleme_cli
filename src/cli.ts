@@ -105,6 +105,11 @@ program
     }
 
     const threshold = opts.threshold as SensitivityLevel;
+    const validLevels = ['none', 'low', 'medium', 'high'];
+    if (!validLevels.includes(threshold)) {
+      console.error(`Gecersiz threshold: ${threshold}. Gecerli degerler: ${validLevels.join(', ')}`);
+      process.exit(1);
+    }
     const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
     const profile = dictToProfile(data);
 
@@ -134,7 +139,7 @@ program
     const excelPath = path.join(opts.output, `sensitivity_${profile.db_alias}_${timestamp}.xlsx`);
 
     const gen = new ExcelReportGenerator(false, threshold);
-    await gen.generate(profile, excelPath);
+    await gen.generateSensitivityOnly(profile, excelPath);
     console.log(`\nExcel: ${excelPath}`);
   });
 

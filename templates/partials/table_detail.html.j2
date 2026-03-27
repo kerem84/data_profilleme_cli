@@ -34,6 +34,9 @@
             <strong>{{ col.column_name }}</strong>
             {% if col.is_primary_key %}<span style="color:#2d5016;font-size:10px;">PK</span>{% endif %}
             {% if col.is_foreign_key %}<span style="color:#7c5e00;font-size:10px;">FK</span>{% endif %}
+            {% if col.sensitivity and col.sensitivity.level != 'none' %}
+            <span class="badge" style="background: {% if col.sensitivity.level == 'high' %}#f4cccc{% elif col.sensitivity.level == 'medium' %}#fce4d6{% else %}#fff2cc{% endif %}; padding: 2px 6px; border-radius: 3px; font-size: 0.75em;">{{ col.sensitivity | sensitivity_label }}</span>
+            {% endif %}
           </td>
           <td>{{ col.data_type }}{% if col.max_length %}({{ col.max_length }}){% endif %}</td>
           <td>

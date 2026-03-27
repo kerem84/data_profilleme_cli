@@ -342,6 +342,18 @@ export class ExcelReportGenerator {
     this.autoWidth(ws);
   }
 
+  async generateSensitivityOnly(profile: DatabaseProfile, outputPath: string): Promise<string> {
+    const logger = getLogger();
+    const wb = new ExcelJS.Workbook();
+    this.writeSensitivityInventory(wb, profile);
+
+    const dir = path.dirname(outputPath);
+    if (dir && dir !== '.') fs.mkdirSync(dir, { recursive: true });
+    await wb.xlsx.writeFile(outputPath);
+    logger.info(`Sensitivity Excel rapor olusturuldu: ${outputPath}`);
+    return outputPath;
+  }
+
   private writeSensitivityInventory(wb: ExcelJS.Workbook, profile: DatabaseProfile): void {
     const ws = wb.addWorksheet('Hassas Veri Envanteri');
     const headers = [

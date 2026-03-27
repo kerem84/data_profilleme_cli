@@ -640,7 +640,7 @@ async function sensitivityFlow(config: AppConfig): Promise<void> {
     fs.mkdirSync(config.outputDir, { recursive: true });
 
     const gen = new ExcelReportGenerator(false, threshold);
-    await gen.generate(profile, excelPath);
+    await gen.generateSensitivityOnly(profile, excelPath);
 
     p.log.success(`Excel: ${excelPath}`);
   } catch (e) {
