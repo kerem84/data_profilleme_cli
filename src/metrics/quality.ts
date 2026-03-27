@@ -74,6 +74,11 @@ export class QualityScorer {
       }
     }
 
+    // PII suspect — from sensitivity analysis (high level)
+    if (!flags.includes('suspected_pii') && profile.sensitivity?.level === 'high') {
+      flags.push('suspected_pii');
+    }
+
     // --- Composite score ---
     const w = this.weights;
     let score =

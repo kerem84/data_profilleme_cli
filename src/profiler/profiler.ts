@@ -13,6 +13,7 @@ import { DistributionMetrics, isNumericType, isNonComparableType } from '../metr
 import { PatternAnalyzer, isStringType } from '../metrics/pattern.js';
 import { OutlierDetector } from '../metrics/outlier.js';
 import { QualityScorer } from '../metrics/quality.js';
+import { SensitivityAnalyzer } from '../metrics/sensitivity.js';
 import type { BaseConnector } from '../connectors/base-connector.js';
 import type {
   ColumnProfile,
@@ -507,6 +508,9 @@ export class Profiler {
     colProf.quality_score = score;
     colProf.quality_grade = grade;
     colProf.quality_flags = flags;
+
+    // Sensitivity analysis
+    colProf.sensitivity = SensitivityAnalyzer.analyze(colProf);
 
     return colProf;
   }
