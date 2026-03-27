@@ -15,7 +15,8 @@ Kaynak veritabani tablolarini otomatik profilleme araci. PostgreSQL, MSSQL, Orac
 - **Incremental Profilleme**: Sadece degisen tablolari yeniden profille (delta analiz)
 - **Kolon Profilleme**: NULL orani, distinct sayisi, min/max, top-N degerler
 - **Numerik Analiz**: Ortalama, standart sapma, percentile, histogram, outlier tespiti (IQR)
-- **Pattern Tespiti**: Email, telefon, TC kimlik, UUID, tarih vb. regex desenleri
+- **Pattern Tespiti**: Email, telefon, TC kimlik, IBAN, kredi karti, UUID, tarih vb. regex desenleri
+- **Hassas Veri Tespiti (PII/KVKK)**: Kolon adi heuristic + pattern eslesme ile otomatik hassas veri kesfi, 3 seviyeli skorlama (low/medium/high), maskeleme onerisi
 - **Kalite Skorlama**: Completeness, uniqueness, consistency, validity boyutlarinda A-F not sistemi
 - **Tablo Boyutu**: Her tablo icin disk boyutu (bytes, KB, MB, GB)
 - **PK/FK Tespiti**: Primary key ve foreign key iliskileri metadata'dan cikarilir
@@ -146,6 +147,7 @@ CLI calistiginda asagidaki menuyu gorursunuz:
 Ne yapmak istiyorsunuz?
   > Veritabani Profille
     JSON'dan Rapor Uret
+    Hassas Veri Taramasi
     Profil Karsilastir
     ER Diyagrami Olustur
     Baglanti Testi
@@ -162,6 +164,12 @@ Ne yapmak istiyorsunuz?
 7. Profilleme baslar, ilerleme cubugu gosterilir
 8. JSON + Excel + HTML raporlari `output_dir`'e yazilir
 
+**Hassas veri taramasi akisi:**
+1. Profil JSON dosyasi sec
+2. Hassas veri analizi calisir (kolon adi heuristic + pattern eslesme)
+3. Ozet gosterilir (yuksek/orta/dusuk seviye dagilimi)
+4. Excel envanteri olusturulur (maskeleme onerileriyle)
+
 **ER diyagrami akisi:**
 1. Profil JSON dosyasi sec
 2. Detay seviyesi sec (minimal / medium / full)
@@ -175,8 +183,9 @@ Ne yapmak istiyorsunuz?
 ```
 output/
   profil_mydb_20260308_120000.json    # Ham profil verisi
-  profil_mydb_20260308_120000.xlsx    # Excel raporu
+  profil_mydb_20260308_120000.xlsx    # Excel raporu (8 sheet, Hassas Veri Envanteri dahil)
   profil_mydb_20260308_120000.html    # HTML raporu (grafikli)
+  sensitivity_mydb_20260308_120000.xlsx  # Hassas veri envanteri (standalone tarama)
   profil.log                          # Islem logu
 
   er_mydb/                            # ER diyagramlari (database bazli)
@@ -186,6 +195,47 @@ output/
       er_mydb_public_medium_....svg   # Sadece public semasi + phantom komsular
     sales/
       er_mydb_sales_medium_....svg
+```
+
+## Hassas Veri Tespiti (PII/KVKK)
+
+Profilleme sirasinda veya mevcut JSON uzerinden otomatik hassas veri taramasi yapar.
+
+**Tespit edilen kategoriler:**
+
+| Kategori | Heuristic Keyword'ler | Pattern |
+|---|---|---|
+| Email | email, e_posta, eposta, mail | `.+@.+\..+` |
+| Telefon (TR) | tel, telefon, phone, gsm, cep, mobile | `+90/0 + 10 digit` |
+| TC Kimlik | tc, tckn, kimlik, identity, ssn | `11 digit, ilk hane != 0` |
+| IBAN | iban | `TR + 24 digit` |
+| Kredi Karti | kredi_kart, credit_card, kart_no, card | `13-19 digit` |
+| Kisi Adi | isim, soyad, first_name, last_name, ... | — (sadece heuristic) |
+| Adres | adres, address, sokak, cadde, street | — (sadece heuristic) |
+
+**Seviye belirleme:**
+- **HIGH**: Kolon adi + veri pattern'i birlikte eslesti
+- **MEDIUM**: Sadece veri pattern'i eslesti
+- **LOW**: Sadece kolon adi eslesti
+
+**Standalone kullanim (CLI):**
+
+```bash
+# Mevcut profil JSON uzerinden tarama
+intellica-profiler sensitivity profil_mydb.json
+
+# Sadece medium ve high seviye
+intellica-profiler sensitivity profil_mydb.json -t medium
+
+# Farkli cikti dizini
+intellica-profiler sensitivity profil_mydb.json -o ./reports
+```
+
+**Config ayari:**
+
+```yaml
+profiling:
+  sensitivity_threshold: "low"   # none | low | medium | high
 ```
 
 ## Desteklenen Veritabanlari
