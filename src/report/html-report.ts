@@ -26,6 +26,12 @@ export class HtmlReportGenerator {
       return s.length > len ? s.slice(0, len) + '...' : s;
     });
     this.env.addFilter('dateshort', (val: unknown) => String(val ?? '').slice(0, 19));
+    this.env.addFilter('sensitivity_label', (val: unknown) => {
+      const s = val as { level?: string; category?: string } | null;
+      if (!s || s.level === 'none') return '';
+      const labels: Record<string, string> = { high: 'YUKSEK', medium: 'ORTA', low: 'DUSUK' };
+      return `${labels[s.level!] ?? s.level} — ${s.category}`;
+    });
   }
 
   generate(profile: DatabaseProfile, outputPath: string): string {
