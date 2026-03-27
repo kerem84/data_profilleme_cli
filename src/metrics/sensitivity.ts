@@ -147,6 +147,7 @@ export class SensitivityAnalyzer {
       for (const table of schema.tables) {
         for (const col of table.columns) {
           const result = SensitivityAnalyzer.analyze(col);
+          col.sensitivity = result;
           if (result && meetsThreshold(result.level, threshold)) {
             findings.push({
               schema: schema.schema_name,
