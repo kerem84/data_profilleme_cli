@@ -1,5 +1,6 @@
 # @intellica/data-profiler
-<img width="943" height="629" alt="image" src="https://github.com/user-attachments/assets/ae3a3e8f-2b9b-4f3e-bc4e-3adf21b29cc3" />
+<img width="946" height="662" alt="image" src="https://github.com/user-attachments/assets/df9d77ff-c8da-4158-8be1-f8200f5b722f" />
+
 
 
 
