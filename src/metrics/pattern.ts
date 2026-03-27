@@ -29,6 +29,8 @@ const MSSQL_PATTERN_MAP: Record<string, string> = {
   url: "(val LIKE 'http://%' OR val LIKE 'https://%')",
   json_object: "(LEFT(val, 1) = '{' AND RIGHT(val, 1) = '}')",
   numeric_string: "(PATINDEX('%[^0-9.+-]%', val) = 0 AND LEN(val) > 0)",
+  iban: "(LEN(val) = 26 AND LEFT(val,2) = 'TR' AND PATINDEX('%[^0-9]%', SUBSTRING(val,3,24)) = 0)",
+  credit_card: "(LEN(REPLACE(REPLACE(val,' ',''),'-','')) BETWEEN 13 AND 19 AND PATINDEX('%[^0-9]%', REPLACE(REPLACE(val,' ',''),'-','')) = 0)",
 };
 
 // HANA LIKE_REGEXPR pattern map
@@ -42,6 +44,8 @@ const HANA_PATTERN_MAP: Record<string, string> = {
   url: "(val LIKE 'http://%' OR val LIKE 'https://%')",
   json_object: "(SUBSTR(val,1,1) = '{' AND SUBSTR(val,LENGTH(val)) = '}')",
   numeric_string: "(val LIKE_REGEXPR '^[0-9.+-]+$' AND LENGTH(val) > 0)",
+  iban: "val LIKE_REGEXPR '^TR[0-9]{24}$'",
+  credit_card: "(LENGTH(REPLACE(REPLACE(val,' ',''),'-','')) BETWEEN 13 AND 19 AND REPLACE(REPLACE(val,' ',''),'-','') LIKE_REGEXPR '^[0-9]+$')",
 };
 
 // Oracle REGEXP_LIKE pattern map
@@ -55,6 +59,8 @@ const ORACLE_PATTERN_MAP: Record<string, string> = {
   url: "(val LIKE 'http://%' OR val LIKE 'https://%')",
   json_object: "(SUBSTR(val,1,1) = '{' AND SUBSTR(val,-1) = '}')",
   numeric_string: "(REGEXP_LIKE(val, '^[0-9.+-]+$') AND LENGTH(val) > 0)",
+  iban: "REGEXP_LIKE(val, '^TR[0-9]{24}$')",
+  credit_card: "(LENGTH(REPLACE(REPLACE(val,' ',''),'-','')) BETWEEN 13 AND 19 AND REGEXP_LIKE(REPLACE(REPLACE(val,' ',''),'-',''), '^[0-9]+$'))",
 };
 
 export function isStringType(dataType: string): boolean {
