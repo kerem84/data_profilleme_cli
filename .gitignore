@@ -26,3 +26,15 @@ config.yaml
 
 # npm
 *.tgz
+
+# Claude Code local settings
+.claude/
+
+# Superpowers specs/plans (internal)
+docs/superpowers/
+
+# Manual test scripts
+test-*.ts
+
+# Notes
+IDEAS.md
