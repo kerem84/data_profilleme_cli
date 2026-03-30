@@ -26,6 +26,7 @@ import type {
   createDefaultColumnProfile,
 } from './types.js';
 import { createDefaultColumnProfile as makeColProfile, formatSize } from './types.js';
+import { CheckpointManager } from './checkpoint-manager.js';
 
 export class Profiler {
   private connector: BaseConnector;
@@ -37,6 +38,9 @@ export class Profiler {
   private quality: QualityScorer;
   private profConfig: AppConfig['profiling'];
   private dbConfig: DatabaseConfig;
+  private checkpointManager: CheckpointManager;
+  private checkpointInterval: number;
+  private outputDir: string;
 
   constructor(config: AppConfig, dbKey: string, connector: BaseConnector, sqlDir: string) {
     this.dbConfig = config.databases[dbKey];
@@ -53,6 +57,9 @@ export class Profiler {
     this.outlier = new OutlierDetector(this.sql, this.connector);
     this.quality = new QualityScorer(config.profiling.qualityWeights);
     this.profConfig = config.profiling;
+    this.checkpointInterval = config.profiling.checkpointInterval;
+    this.outputDir = config.outputDir;
+    this.checkpointManager = new CheckpointManager(config.outputDir);
   }
 
   async profileDatabase(
@@ -84,6 +91,22 @@ export class Profiler {
         }
       }
       logger.info(`[${this.dbConfig.alias}] Incremental mod: ${prevTableMap.size} onceki tablo yuklendi.`);
+    }
+
+    // Checkpoint resume
+    const completedTables = new Set<string>();
+    const checkpointData = this.checkpointManager.load(this.dbConfig.alias);
+    if (checkpointData) {
+      for (const t of checkpointData.completed_tables) {
+        completedTables.add(t);
+      }
+      // Restore partial profile schemas
+      for (const schema of checkpointData.partial_profile.schemas) {
+        dbProfile.schemas.push(schema);
+      }
+      logger.info(
+        `[${this.dbConfig.alias}] Checkpoint'ten devam ediliyor: ${completedTables.size} tablo atlanacak`,
+      );
     }
 
     if (!(await this.connector.testConnection())) {
@@ -122,12 +145,19 @@ export class Profiler {
       { format: `[${this.dbConfig.alias}] Profilleme |{bar}| {percentage}% | {value}/{total} | {postfix}` },
       Presets.shades_classic,
     );
-    pbar.start(totalTables, 0, { postfix: '' });
+    pbar.start(totalTables, completedTables.size, { postfix: '' });
 
     for (const schema of schemas) {
       const tables = schemaTables.get(schema) ?? [];
-      const schemaProf = await this.profileSchema(schema, tables, pbar, prevTableMap);
+
+      // Remove previously checkpointed version of this schema (resume case)
+      dbProfile.schemas = dbProfile.schemas.filter((s) => s.schema_name !== schema);
+
+      const schemaProf = await this.profileSchema(schema, tables, pbar, completedTables, prevTableMap);
       dbProfile.schemas.push(schemaProf);
+
+      // Checkpoint: save after each schema
+      this.checkpointManager.save(dbProfile, completedTables);
     }
 
     pbar.stop();
@@ -172,6 +202,9 @@ export class Profiler {
       );
     }
 
+    // Clear checkpoint after successful completion
+    this.checkpointManager.clear(this.dbConfig.alias);
+
     return dbProfile;
   }
 
@@ -179,6 +212,7 @@ export class Profiler {
     schema: string,
     tables: TableInfo[],
     pbar: SingleBar,
+    completedTables: Set<string>,
     prevTableMap?: Map<string, TableProfile>,
   ): Promise<SchemaProfile> {
     const logger = getLogger();
@@ -213,6 +247,12 @@ export class Profiler {
         const tableType = tableInfo.table_type;
         const estimated = tableInfo.estimated_rows;
         const prevKey = `${schema}.${tableName}`;
+
+        // Checkpoint resume: skip already completed tables
+        if (completedTables.has(prevKey)) {
+          pbar.increment();
+          return null;
+        }
 
         activeTables.add(tableName);
         updatePostfix();
@@ -265,6 +305,7 @@ export class Profiler {
         schemaProf.tables.push(tableProf);
         schemaProf.total_rows += tableProf.row_count;
         schemaProf.total_size_bytes += tableProf.table_size_bytes ?? 0;
+        completedTables.add(`${schema}.${tableProf.table_name}`);
       }
     }
 
