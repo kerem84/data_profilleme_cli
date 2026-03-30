@@ -23,6 +23,7 @@ import { checkGraphviz } from '../er-diagram/graphviz.js';
 import { SensitivityAnalyzer } from '../metrics/sensitivity.js';
 import type { SensitivityLevel } from '../metrics/sensitivity.js';
 import { ExcelReportGenerator } from '../report/excel-report.js';
+import { CheckpointManager } from '../profiler/checkpoint-manager.js';
 
 /* ------------------------------------------------------------------ */
 /*  Top-level entry                                                    */
@@ -441,6 +442,33 @@ async function profileFlow(config: AppConfig, pkgRoot: string): Promise<void> {
 
     p.log.step(`${C.bold(key)} profilleme basliyor...`);
     logger.info(`=== Profilleme basliyor: ${key} ===`);
+
+    // Checkpoint resume check
+    const ckptMgr = new CheckpointManager(config.outputDir);
+
+    if (ckptMgr.exists(key)) {
+      const info = ckptMgr.getInfo(key);
+      if (info) {
+        await resetStdin();
+        const resumeChoice = await p.select({
+          message: `${C.bold(key)} icin tamamlanmamis profilleme bulundu (${info.completedCount} tablo, ${new Date(info.updatedAt).toLocaleString('tr-TR')})`,
+          options: [
+            { value: 'resume' as const, label: 'Kaldigi yerden devam et' },
+            { value: 'restart' as const, label: 'Sifirdan basla (checkpoint silinir)' },
+          ],
+        });
+
+        if (p.isCancel(resumeChoice)) {
+          await destroyConnectors(connectors);
+          return;
+        }
+
+        if (resumeChoice === 'restart') {
+          ckptMgr.clear(key);
+        }
+        // 'resume' case: Profiler.profileDatabase() will load checkpoint automatically
+      }
+    }
 
     const profiler = new Profiler(config, key, connector, sqlDir);
     const tableMap = selectedTables.get(key);
