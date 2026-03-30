@@ -165,7 +165,7 @@ export class Profiler {
       // Remove previously checkpointed version of this schema (resume case)
       dbProfile.schemas = dbProfile.schemas.filter((s) => s.schema_name !== schema);
 
-      const schemaProf = await this.profileSchema(schema, tables, pbar, completedTables, prevTableMap);
+      const schemaProf = await this.profileSchema(schema, tables, pbar, completedTables, dbProfile, prevTableMap);
       dbProfile.schemas.push(schemaProf);
 
       // Checkpoint: save after each schema
@@ -226,6 +226,7 @@ export class Profiler {
     tables: TableInfo[],
     pbar: SingleBar,
     completedTables: Set<string>,
+    dbProfile: DatabaseProfile,
     prevTableMap?: Map<string, TableProfile>,
   ): Promise<SchemaProfile> {
     const logger = getLogger();
@@ -253,6 +254,10 @@ export class Profiler {
       const names = [...activeTables];
       pbar.update({ postfix: names.length > 0 ? names.join(', ') : '' });
     };
+
+    // Process tables in batches for checkpoint support
+    const interval = this.checkpointInterval;
+    let tablesSinceCheckpoint = 0;
 
     const tasks = tables.map((tableInfo) =>
       limit(async () => {
@@ -319,6 +324,13 @@ export class Profiler {
         schemaProf.total_rows += tableProf.row_count;
         schemaProf.total_size_bytes += tableProf.table_size_bytes ?? 0;
         completedTables.add(`${schema}.${tableProf.table_name}`);
+        tablesSinceCheckpoint++;
+
+        // Checkpoint every N tables within a schema
+        if (tablesSinceCheckpoint >= interval) {
+          this.checkpointManager.save(dbProfile, completedTables);
+          tablesSinceCheckpoint = 0;
+        }
       }
     }
 
