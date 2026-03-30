@@ -283,6 +283,8 @@ export class Profiler {
         updatePostfix();
 
         try {
+          let result: TableProfile | null = null;
+
           // Incremental: check if table changed since baseline
           if (prevTableMap?.has(prevKey)) {
             const prev = prevTableMap.get(prevKey)!;
@@ -292,26 +294,39 @@ export class Profiler {
             const colMeta = metadata.get(tableName) ?? [];
 
             if (rc.row_count === prev.row_count && colMeta.length === prev.column_count) {
-              const carried: TableProfile = {
+              result = {
                 ...prev,
                 estimated_rows: estimated,
                 incremental_status: 'unchanged',
               };
               logger.info(`[${prevKey}] Degisiklik yok, onceki profil tasindi.`);
-              return carried;
             }
           }
 
-          const tableProf = await this.connector.withConnection(async (conn) => {
-            return this.profileTable(conn, schema, tableName, tableType, estimated, metadata);
-          });
+          if (!result) {
+            result = await this.connector.withConnection(async (conn) => {
+              return this.profileTable(conn, schema, tableName, tableType, estimated, metadata);
+            });
 
-          // Mark incremental status
-          if (prevTableMap) {
-            tableProf.incremental_status = prevTableMap.has(prevKey) ? 'changed' : 'new';
+            // Mark incremental status
+            if (prevTableMap) {
+              result.incremental_status = prevTableMap.has(prevKey) ? 'changed' : 'new';
+            }
           }
 
-          return tableProf;
+          // Immediately track completed table for checkpoint
+          schemaProf.tables.push(result);
+          schemaProf.total_rows += result.row_count;
+          schemaProf.total_size_bytes += result.table_size_bytes ?? 0;
+          completedTables.add(prevKey);
+          tablesSinceCheckpoint++;
+
+          if (tablesSinceCheckpoint >= interval) {
+            this.checkpointManager.save(dbProfile, completedTables);
+            tablesSinceCheckpoint = 0;
+          }
+
+          return result;
         } catch (e) {
           logger.error(`[${schema}.${tableName}] Tablo profilleme hatasi: ${e}`);
           return null;
@@ -323,23 +338,7 @@ export class Profiler {
       }),
     );
 
-    const results = await Promise.all(tasks);
-
-    for (const tableProf of results) {
-      if (tableProf) {
-        schemaProf.tables.push(tableProf);
-        schemaProf.total_rows += tableProf.row_count;
-        schemaProf.total_size_bytes += tableProf.table_size_bytes ?? 0;
-        completedTables.add(`${schema}.${tableProf.table_name}`);
-        tablesSinceCheckpoint++;
-
-        // Checkpoint every N tables within a schema
-        if (tablesSinceCheckpoint >= interval) {
-          this.checkpointManager.save(dbProfile, completedTables);
-          tablesSinceCheckpoint = 0;
-        }
-      }
-    }
+    await Promise.all(tasks);
 
     schemaProf.total_size_display = formatSize(schemaProf.total_size_bytes);
 
