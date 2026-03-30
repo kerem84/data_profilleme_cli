@@ -206,6 +206,7 @@ export interface TableInfo {
   table_name: string;
   table_type: string;
   estimated_rows: number;
+  table_description?: string;
 }
 
 export interface RowCountResult {

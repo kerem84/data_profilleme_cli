@@ -308,7 +308,7 @@ export class Profiler {
 
           if (!result) {
             result = await this.connector.withConnection(async (conn) => {
-              return this.profileTable(conn, schema, tableName, tableType, estimated, metadata);
+              return this.profileTable(conn, schema, tableName, tableType, estimated, metadata, tableInfo.table_description);
             });
 
             // Mark incremental status
@@ -411,6 +411,7 @@ export class Profiler {
     tableType: string,
     estimatedRows: number,
     metadata: Map<string, Record<string, unknown>[]>,
+    tableDescription?: string | null,
   ): Promise<TableProfile> {
     const startTime = Date.now();
 
@@ -426,7 +427,8 @@ export class Profiler {
 
     // Column metadata
     const colMeta = metadata.get(table) ?? [];
-    const tableDesc = colMeta[0]?.table_description != null ? String(colMeta[0].table_description) : null;
+    const tableDesc = tableDescription
+      ?? (colMeta[0]?.table_description != null ? String(colMeta[0].table_description) : null);
     if (colMeta.length === 0) {
       return {
         schema_name: schema,
