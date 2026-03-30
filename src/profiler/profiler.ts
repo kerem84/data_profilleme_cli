@@ -148,16 +148,22 @@ export class Profiler {
     pbar.start(totalTables, completedTables.size, { postfix: '' });
 
     // Graceful shutdown: Ctrl+C checkpoint kaydedip ciksin
+    // Windows raw-mode stdin'de SIGINT yerine \x03 byte gelir
     let interrupted = false;
-    const onSigint = () => {
+    const doShutdown = () => {
+      if (interrupted) return;
       interrupted = true;
       pbar.stop();
-      logger.info(`[${this.dbConfig.alias}] SIGINT alindi, checkpoint kaydediliyor...`);
+      logger.info(`[${this.dbConfig.alias}] Durduruldu, checkpoint kaydediliyor...`);
       this.checkpointManager.save(dbProfile, completedTables);
       logger.info(`[${this.dbConfig.alias}] Checkpoint kaydedildi (${completedTables.size}/${totalTables} tablo). Devam etmek icin tekrar calistirin.`);
       process.exit(0);
     };
-    process.on('SIGINT', onSigint);
+    process.on('SIGINT', doShutdown);
+    const onData = (data: Buffer) => {
+      if (data[0] === 0x03) doShutdown(); // Ctrl+C in raw mode
+    };
+    process.stdin.on('data', onData);
 
     for (const schema of schemas) {
       const tables = schemaTables.get(schema) ?? [];
@@ -172,7 +178,8 @@ export class Profiler {
       this.checkpointManager.save(dbProfile, completedTables);
     }
 
-    process.removeListener('SIGINT', onSigint);
+    process.removeListener('SIGINT', doShutdown);
+    process.stdin.removeListener('data', onData);
     pbar.stop();
 
     // Aggregation
