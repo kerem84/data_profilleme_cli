@@ -171,8 +171,19 @@ export class Profiler {
       // Remove previously checkpointed version of this schema (resume case)
       dbProfile.schemas = dbProfile.schemas.filter((s) => s.schema_name !== schema);
 
-      const schemaProf = await this.profileSchema(schema, tables, pbar, completedTables, dbProfile, prevTableMap);
+      // Push schema early so in-progress tables are visible in checkpoint
+      const schemaProf: SchemaProfile = {
+        schema_name: schema,
+        table_count: tables.length,
+        total_rows: 0,
+        total_size_bytes: 0,
+        total_size_display: '0 B',
+        tables: [],
+        schema_quality_score: 0,
+      };
       dbProfile.schemas.push(schemaProf);
+
+      await this.profileSchema(schema, tables, pbar, completedTables, schemaProf, dbProfile, prevTableMap);
 
       // Checkpoint: save after each schema
       this.checkpointManager.save(dbProfile, completedTables);
@@ -233,20 +244,12 @@ export class Profiler {
     tables: TableInfo[],
     pbar: SingleBar,
     completedTables: Set<string>,
+    schemaProf: SchemaProfile,
     dbProfile: DatabaseProfile,
     prevTableMap?: Map<string, TableProfile>,
-  ): Promise<SchemaProfile> {
+  ): Promise<void> {
     const logger = getLogger();
     const concurrency = this.profConfig.concurrency;
-    const schemaProf: SchemaProfile = {
-      schema_name: schema,
-      table_count: tables.length,
-      total_rows: 0,
-      total_size_bytes: 0,
-      total_size_display: '0 B',
-      tables: [],
-      schema_quality_score: 0,
-    };
 
     // Prefetch metadata with a single connection
     const metadata = await this.connector.withConnection(async (conn) => {
@@ -351,7 +354,6 @@ export class Profiler {
         scoredTables.reduce((s, t) => s + t.table_quality_score, 0) / scoredTables.length;
     }
 
-    return schemaProf;
   }
 
   private async fetchSchemaMetadata(
