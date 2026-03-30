@@ -37,6 +37,7 @@ export interface ColumnProfile {
   referenced_schema: string | null;
   referenced_table: string | null;
   referenced_column: string | null;
+  description: string | null;
   // Basic
   null_count: number;
   null_ratio: number;
@@ -164,6 +165,7 @@ export function createDefaultColumnProfile(colMeta: Record<string, unknown>): Co
     referenced_schema: colMeta.referenced_schema != null ? String(colMeta.referenced_schema) : null,
     referenced_table: colMeta.referenced_table != null ? String(colMeta.referenced_table) : null,
     referenced_column: colMeta.referenced_column != null ? String(colMeta.referenced_column) : null,
+    description: colMeta.column_description != null ? String(colMeta.column_description) : null,
     null_count: 0,
     null_ratio: 0.0,
     distinct_count: 0,

@@ -16,6 +16,7 @@
         <tr>
           <th>#</th>
           <th>Kolon</th>
+          <th>Aciklama</th>
           <th>Tip</th>
           <th>NULL</th>
           <th>NULL %</th>
@@ -38,6 +39,7 @@
             <span class="badge" style="background: {% if col.sensitivity.level == 'high' %}#f4cccc{% elif col.sensitivity.level == 'medium' %}#fce4d6{% else %}#fff2cc{% endif %}; padding: 2px 6px; border-radius: 3px; font-size: 0.75em;">{{ col.sensitivity | sensitivity_label }}</span>
             {% endif %}
           </td>
+          <td style="font-size:11px; color:var(--text-muted);">{{ col.description or '' }}</td>
           <td>{{ col.data_type }}{% if col.max_length %}({{ col.max_length }}){% endif %}</td>
           <td>
             <span class="null-bar">
