@@ -128,6 +128,15 @@ export interface DatabaseProfile {
   incremental?: IncrementalSummary;
 }
 
+/** Checkpoint data for crash recovery. */
+export interface CheckpointData {
+  db_alias: string;
+  started_at: string;
+  updated_at: string;
+  completed_tables: string[];
+  partial_profile: DatabaseProfile;
+}
+
 /** Format bytes to human-readable size string. */
 export function formatSize(bytes: number | null): string {
   if (bytes == null || bytes === 0) return '0 B';
