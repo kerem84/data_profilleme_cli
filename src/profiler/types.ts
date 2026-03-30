@@ -77,6 +77,7 @@ export interface TableProfile {
   schema_name: string;
   table_name: string;
   table_type: string;
+  description: string | null;
   row_count: number;
   estimated_rows: number;
   row_count_estimated: boolean;

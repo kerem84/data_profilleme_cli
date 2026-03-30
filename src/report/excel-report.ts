@@ -145,7 +145,7 @@ export class ExcelReportGenerator {
     const ws = wb.addWorksheet('Tablo Profil');
     const hasIncremental = profile.incremental?.enabled;
     const headers = [
-      'Sema', 'Tablo', 'Tip', 'Satir Sayisi', 'Tahmini', 'Boyut',
+      'Sema', 'Tablo', 'Aciklama', 'Tip', 'Satir Sayisi', 'Tahmini', 'Boyut',
       'Kolon Sayisi', 'Sampling', 'Sample %',
       'Kalite Skoru', 'Kalite Notu', 'Sure (sn)',
       ...(hasIncremental ? ['Durum'] : []),
@@ -166,24 +166,25 @@ export class ExcelReportGenerator {
     let r = 2;
     for (const schema of profile.schemas) {
       for (const table of schema.tables) {
-        const colCount = hasIncremental ? 13 : 12;
+        const colCount = hasIncremental ? 14 : 13;
         ws.getRow(r).getCell(1).value = table.schema_name;
         ws.getRow(r).getCell(2).value = table.table_name;
-        ws.getRow(r).getCell(3).value = table.table_type;
-        ws.getRow(r).getCell(4).value = table.row_count;
-        ws.getRow(r).getCell(5).value = table.row_count_estimated ? 'Evet' : 'Hayir';
-        ws.getRow(r).getCell(6).value = table.table_size_display || '-';
-        ws.getRow(r).getCell(7).value = table.column_count;
-        ws.getRow(r).getCell(8).value = table.sampled ? 'Evet' : 'Hayir';
-        ws.getRow(r).getCell(9).value = table.sample_percent ?? '';
-        ws.getRow(r).getCell(10).value = Math.round(table.table_quality_score * 10000) / 10000;
-        const gradeCell = ws.getRow(r).getCell(11);
+        ws.getRow(r).getCell(3).value = table.description ?? '';
+        ws.getRow(r).getCell(4).value = table.table_type;
+        ws.getRow(r).getCell(5).value = table.row_count;
+        ws.getRow(r).getCell(6).value = table.row_count_estimated ? 'Evet' : 'Hayir';
+        ws.getRow(r).getCell(7).value = table.table_size_display || '-';
+        ws.getRow(r).getCell(8).value = table.column_count;
+        ws.getRow(r).getCell(9).value = table.sampled ? 'Evet' : 'Hayir';
+        ws.getRow(r).getCell(10).value = table.sample_percent ?? '';
+        ws.getRow(r).getCell(11).value = Math.round(table.table_quality_score * 10000) / 10000;
+        const gradeCell = ws.getRow(r).getCell(12);
         gradeCell.value = table.table_quality_grade;
         gradeCell.fill = GRADE_FILLS[table.table_quality_grade] ?? GRADE_FILLS['F'];
-        ws.getRow(r).getCell(12).value = table.profile_duration_sec;
+        ws.getRow(r).getCell(13).value = table.profile_duration_sec;
 
         if (hasIncremental && table.incremental_status) {
-          const statusCell = ws.getRow(r).getCell(13);
+          const statusCell = ws.getRow(r).getCell(14);
           statusCell.value = STATUS_LABELS[table.incremental_status] ?? table.incremental_status;
 
           // Color unchanged rows with dim background

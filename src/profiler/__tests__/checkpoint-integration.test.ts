@@ -28,6 +28,7 @@ function makeProfile(alias: string, schemaName: string, tableNames: string[]): D
         schema_name: schemaName,
         table_name: t,
         table_type: 'BASE TABLE',
+        description: null,
         row_count: 100,
         estimated_rows: 100,
         row_count_estimated: false,

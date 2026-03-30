@@ -22,7 +22,8 @@ SELECT
     rs.name AS referenced_schema,
     rt.name AS referenced_table,
     rc.name AS referenced_column,
-    ep.value AS column_description
+    ep.value AS column_description,
+    tep.value AS table_description
 FROM sys.columns c
 INNER JOIN sys.tables t ON c.object_id = t.object_id
 INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
@@ -49,5 +50,10 @@ LEFT JOIN sys.extended_properties ep
     AND ep.minor_id = c.column_id
     AND ep.name = 'MS_Description'
     AND ep.class = 1
+LEFT JOIN sys.extended_properties tep
+    ON tep.major_id = t.object_id
+    AND tep.minor_id = 0
+    AND tep.name = 'MS_Description'
+    AND tep.class = 1
 WHERE s.name = ?
 ORDER BY t.name, c.column_id;

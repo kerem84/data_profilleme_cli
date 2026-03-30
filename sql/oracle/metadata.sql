@@ -12,12 +12,16 @@ SELECT
     fk.r_owner                                        AS referenced_schema,
     fk.r_table_name                                   AS referenced_table,
     fk.r_column_name                                  AS referenced_column,
-    cc.comments                                       AS column_description
+    cc.comments                                       AS column_description,
+    tc.comments                                       AS table_description
 FROM all_tab_columns c
 LEFT JOIN all_col_comments cc
     ON cc.owner = c.owner
     AND cc.table_name = c.table_name
     AND cc.column_name = c.column_name
+LEFT JOIN all_tab_comments tc
+    ON tc.owner = c.owner
+    AND tc.table_name = c.table_name
 LEFT JOIN (
     SELECT acc.owner, acc.table_name, acc.column_name, acc.constraint_name
     FROM all_cons_columns acc

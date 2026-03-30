@@ -18,7 +18,8 @@ SELECT
     fk.referenced_schema,
     fk.referenced_table,
     fk.referenced_column,
-    pgd.description AS column_description
+    pgd.description AS column_description,
+    tgd.description AS table_description
 FROM information_schema.columns c
 LEFT JOIN pg_catalog.pg_statio_all_columns psa
     ON psa.schemaname = c.table_schema
@@ -27,6 +28,12 @@ LEFT JOIN pg_catalog.pg_statio_all_columns psa
 LEFT JOIN pg_catalog.pg_description pgd
     ON pgd.objoid = psa.relid
     AND pgd.objsubid = c.ordinal_position
+LEFT JOIN pg_catalog.pg_class tbl
+    ON tbl.relname = c.table_name
+    AND tbl.relnamespace = (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = c.table_schema)
+LEFT JOIN pg_catalog.pg_description tgd
+    ON tgd.objoid = tbl.oid
+    AND tgd.objsubid = 0
 LEFT JOIN (
     SELECT
         n.nspname   AS table_schema,

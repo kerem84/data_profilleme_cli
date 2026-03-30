@@ -27,6 +27,7 @@ function makeProfile(alias: string, tables: string[]): DatabaseProfile {
         schema_name: 'public',
         table_name: t,
         table_type: 'BASE TABLE',
+        description: null,
         row_count: 100,
         estimated_rows: 100,
         row_count_estimated: false,

@@ -426,11 +426,13 @@ export class Profiler {
 
     // Column metadata
     const colMeta = metadata.get(table) ?? [];
+    const tableDesc = colMeta[0]?.table_description != null ? String(colMeta[0].table_description) : null;
     if (colMeta.length === 0) {
       return {
         schema_name: schema,
         table_name: table,
         table_type: tableType,
+        description: null,
         row_count: rowCount,
         estimated_rows: estimatedRows,
         row_count_estimated: rowEstimated,
@@ -476,6 +478,7 @@ export class Profiler {
       schema_name: schema,
       table_name: table,
       table_type: tableType,
+      description: tableDesc,
       row_count: rowCount,
       estimated_rows: estimatedRows,
       row_count_estimated: rowEstimated,
