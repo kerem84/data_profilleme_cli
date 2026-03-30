@@ -41,6 +41,7 @@ export interface ProfilingConfig {
   qualityWeights: QualityWeights;
   stringPatterns: Record<string, string>;
   sensitivityThreshold: SensitivityLevel;
+  checkpointInterval: number;
 }
 
 export interface MappingConfig {

@@ -73,6 +73,7 @@ export function loadConfig(configPath: string): AppConfig {
       },
       stringPatterns: data.profiling.string_patterns,
       sensitivityThreshold: data.profiling.sensitivity_threshold,
+      checkpointInterval: data.profiling.checkpoint_interval,
     },
     mapping: {
       enabled: data.mapping.enabled,
