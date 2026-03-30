@@ -277,8 +277,8 @@ export class Profiler {
         const prevKey = `${schema}.${tableName}`;
 
         // Checkpoint resume: skip already completed tables
+        // pbar.increment() yapma — startValue'da zaten sayildi
         if (completedTables.has(prevKey)) {
-          pbar.increment();
           return null;
         }
 
