@@ -17,8 +17,16 @@ SELECT
     fk.fk_constraint,
     fk.referenced_schema,
     fk.referenced_table,
-    fk.referenced_column
+    fk.referenced_column,
+    pgd.description AS column_description
 FROM information_schema.columns c
+LEFT JOIN pg_catalog.pg_statio_all_columns psa
+    ON psa.schemaname = c.table_schema
+    AND psa.tablename = c.table_name
+    AND psa.attname = c.column_name
+LEFT JOIN pg_catalog.pg_description pgd
+    ON pgd.objoid = psa.relid
+    AND pgd.objsubid = c.ordinal_position
 LEFT JOIN (
     SELECT
         n.nspname   AS table_schema,

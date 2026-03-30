@@ -11,8 +11,13 @@ SELECT
     fk.constraint_name                                AS fk_constraint,
     fk.r_owner                                        AS referenced_schema,
     fk.r_table_name                                   AS referenced_table,
-    fk.r_column_name                                  AS referenced_column
+    fk.r_column_name                                  AS referenced_column,
+    cc.comments                                       AS column_description
 FROM all_tab_columns c
+LEFT JOIN all_col_comments cc
+    ON cc.owner = c.owner
+    AND cc.table_name = c.table_name
+    AND cc.column_name = c.column_name
 LEFT JOIN (
     SELECT acc.owner, acc.table_name, acc.column_name, acc.constraint_name
     FROM all_cons_columns acc
