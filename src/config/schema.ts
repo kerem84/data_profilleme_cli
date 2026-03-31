@@ -45,6 +45,7 @@ const profilingConfigSchema = z.object({
     credit_card: '^[0-9]{13,19}$',
   }),
   sensitivity_threshold: z.enum(['none', 'low', 'medium', 'high']).default('low'),
+  checkpoint_interval: z.coerce.number().int().min(10).default(100),
 }).default({});
 
 const mappingConfigSchema = z.object({

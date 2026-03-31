@@ -21,7 +21,9 @@ SELECT
     fk_obj.name AS fk_constraint,
     rs.name AS referenced_schema,
     rt.name AS referenced_table,
-    rc.name AS referenced_column
+    rc.name AS referenced_column,
+    ep.value AS column_description,
+    tep.value AS table_description
 FROM sys.columns c
 INNER JOIN sys.tables t ON c.object_id = t.object_id
 INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
@@ -43,5 +45,15 @@ LEFT JOIN sys.schemas rs ON rt.schema_id = rs.schema_id
 LEFT JOIN sys.columns rc
     ON fkc.referenced_object_id = rc.object_id
     AND fkc.referenced_column_id = rc.column_id
+LEFT JOIN sys.extended_properties ep
+    ON ep.major_id = c.object_id
+    AND ep.minor_id = c.column_id
+    AND ep.name = 'MS_Description'
+    AND ep.class = 1
+LEFT JOIN sys.extended_properties tep
+    ON tep.major_id = t.object_id
+    AND tep.minor_id = 0
+    AND tep.name = 'MS_Description'
+    AND tep.class = 1
 WHERE s.name = ?
 ORDER BY t.name, c.column_id;

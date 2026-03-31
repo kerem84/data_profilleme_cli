@@ -37,6 +37,7 @@ export interface ColumnProfile {
   referenced_schema: string | null;
   referenced_table: string | null;
   referenced_column: string | null;
+  description: string | null;
   // Basic
   null_count: number;
   null_ratio: number;
@@ -76,6 +77,7 @@ export interface TableProfile {
   schema_name: string;
   table_name: string;
   table_type: string;
+  description: string | null;
   row_count: number;
   estimated_rows: number;
   row_count_estimated: boolean;
@@ -128,6 +130,15 @@ export interface DatabaseProfile {
   incremental?: IncrementalSummary;
 }
 
+/** Checkpoint data for crash recovery. */
+export interface CheckpointData {
+  db_alias: string;
+  started_at: string;
+  updated_at: string;
+  completed_tables: string[];
+  partial_profile: DatabaseProfile;
+}
+
 /** Format bytes to human-readable size string. */
 export function formatSize(bytes: number | null): string {
   if (bytes == null || bytes === 0) return '0 B';
@@ -155,6 +166,7 @@ export function createDefaultColumnProfile(colMeta: Record<string, unknown>): Co
     referenced_schema: colMeta.referenced_schema != null ? String(colMeta.referenced_schema) : null,
     referenced_table: colMeta.referenced_table != null ? String(colMeta.referenced_table) : null,
     referenced_column: colMeta.referenced_column != null ? String(colMeta.referenced_column) : null,
+    description: colMeta.column_description != null ? String(colMeta.column_description) : null,
     null_count: 0,
     null_ratio: 0.0,
     distinct_count: 0,
@@ -194,6 +206,7 @@ export interface TableInfo {
   table_name: string;
   table_type: string;
   estimated_rows: number;
+  table_description?: string;
 }
 
 export interface RowCountResult {

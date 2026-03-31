@@ -179,11 +179,19 @@ export class HanaBwConnector extends BaseConnector {
       });
     }
 
-    return rows.map((r) => ({
-      table_name: String(r.table_name),
-      table_type: String(r.table_type),
-      estimated_rows: Number(r.estimated_rows ?? 0),
-    }));
+    // BW tablo aciklamalarini yukle (RSDCUBET + RSDODSOT)
+    const descriptions = await this.loadBwTableDescriptions(schema);
+
+    return rows.map((r) => {
+      const name = String(r.table_name);
+      const bwName = HanaBwConnector.extractBwObjectName(name);
+      return {
+        table_name: name,
+        table_type: String(r.table_type),
+        estimated_rows: Number(r.estimated_rows ?? 0),
+        table_description: bwName ? (descriptions.get(bwName) ?? undefined) : undefined,
+      };
+    });
   }
 
   async getEstimatedRowCount(conn: DbConnection, schema: string, table: string): Promise<RowCountResult> {

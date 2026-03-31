@@ -26,6 +26,7 @@ import type {
   createDefaultColumnProfile,
 } from './types.js';
 import { createDefaultColumnProfile as makeColProfile, formatSize } from './types.js';
+import { CheckpointManager } from './checkpoint-manager.js';
 
 export class Profiler {
   private connector: BaseConnector;
@@ -37,6 +38,9 @@ export class Profiler {
   private quality: QualityScorer;
   private profConfig: AppConfig['profiling'];
   private dbConfig: DatabaseConfig;
+  private checkpointManager: CheckpointManager;
+  private checkpointInterval: number;
+  private outputDir: string;
 
   constructor(config: AppConfig, dbKey: string, connector: BaseConnector, sqlDir: string) {
     this.dbConfig = config.databases[dbKey];
@@ -53,6 +57,9 @@ export class Profiler {
     this.outlier = new OutlierDetector(this.sql, this.connector);
     this.quality = new QualityScorer(config.profiling.qualityWeights);
     this.profConfig = config.profiling;
+    this.checkpointInterval = config.profiling.checkpointInterval;
+    this.outputDir = config.outputDir;
+    this.checkpointManager = new CheckpointManager(config.outputDir);
   }
 
   async profileDatabase(
@@ -84,6 +91,22 @@ export class Profiler {
         }
       }
       logger.info(`[${this.dbConfig.alias}] Incremental mod: ${prevTableMap.size} onceki tablo yuklendi.`);
+    }
+
+    // Checkpoint resume
+    const completedTables = new Set<string>();
+    const checkpointData = this.checkpointManager.load(this.dbConfig.alias);
+    if (checkpointData) {
+      for (const t of checkpointData.completed_tables) {
+        completedTables.add(t);
+      }
+      // Restore partial profile schemas
+      for (const schema of checkpointData.partial_profile.schemas) {
+        dbProfile.schemas.push(schema);
+      }
+      logger.info(
+        `[${this.dbConfig.alias}] Checkpoint'ten devam ediliyor: ${completedTables.size} tablo atlanacak`,
+      );
     }
 
     if (!(await this.connector.testConnection())) {
@@ -122,14 +145,52 @@ export class Profiler {
       { format: `[${this.dbConfig.alias}] Profilleme |{bar}| {percentage}% | {value}/{total} | {postfix}` },
       Presets.shades_classic,
     );
-    pbar.start(totalTables, 0, { postfix: '' });
+    pbar.start(totalTables, completedTables.size, { postfix: '' });
+
+    // Graceful shutdown: Ctrl+C checkpoint kaydedip ciksin
+    // Windows raw-mode stdin'de SIGINT yerine \x03 byte gelir
+    let interrupted = false;
+    const doShutdown = () => {
+      if (interrupted) return;
+      interrupted = true;
+      pbar.stop();
+      logger.info(`[${this.dbConfig.alias}] Durduruldu, checkpoint kaydediliyor...`);
+      this.checkpointManager.save(dbProfile, completedTables);
+      logger.info(`[${this.dbConfig.alias}] Checkpoint kaydedildi (${completedTables.size}/${totalTables} tablo). Devam etmek icin tekrar calistirin.`);
+      process.exit(0);
+    };
+    process.on('SIGINT', doShutdown);
+    const onData = (data: Buffer) => {
+      if (data[0] === 0x03) doShutdown(); // Ctrl+C in raw mode
+    };
+    process.stdin.on('data', onData);
 
     for (const schema of schemas) {
       const tables = schemaTables.get(schema) ?? [];
-      const schemaProf = await this.profileSchema(schema, tables, pbar, prevTableMap);
+
+      // Remove previously checkpointed version of this schema (resume case)
+      dbProfile.schemas = dbProfile.schemas.filter((s) => s.schema_name !== schema);
+
+      // Push schema early so in-progress tables are visible in checkpoint
+      const schemaProf: SchemaProfile = {
+        schema_name: schema,
+        table_count: tables.length,
+        total_rows: 0,
+        total_size_bytes: 0,
+        total_size_display: '0 B',
+        tables: [],
+        schema_quality_score: 0,
+      };
       dbProfile.schemas.push(schemaProf);
+
+      await this.profileSchema(schema, tables, pbar, completedTables, schemaProf, dbProfile, prevTableMap);
+
+      // Checkpoint: save after each schema
+      this.checkpointManager.save(dbProfile, completedTables);
     }
 
+    process.removeListener('SIGINT', doShutdown);
+    process.stdin.removeListener('data', onData);
     pbar.stop();
 
     // Aggregation
@@ -172,6 +233,9 @@ export class Profiler {
       );
     }
 
+    // Clear checkpoint after successful completion
+    this.checkpointManager.clear(this.dbConfig.alias);
+
     return dbProfile;
   }
 
@@ -179,19 +243,13 @@ export class Profiler {
     schema: string,
     tables: TableInfo[],
     pbar: SingleBar,
+    completedTables: Set<string>,
+    schemaProf: SchemaProfile,
+    dbProfile: DatabaseProfile,
     prevTableMap?: Map<string, TableProfile>,
-  ): Promise<SchemaProfile> {
+  ): Promise<void> {
     const logger = getLogger();
     const concurrency = this.profConfig.concurrency;
-    const schemaProf: SchemaProfile = {
-      schema_name: schema,
-      table_count: tables.length,
-      total_rows: 0,
-      total_size_bytes: 0,
-      total_size_display: '0 B',
-      tables: [],
-      schema_quality_score: 0,
-    };
 
     // Prefetch metadata with a single connection
     const metadata = await this.connector.withConnection(async (conn) => {
@@ -207,6 +265,10 @@ export class Profiler {
       pbar.update({ postfix: names.length > 0 ? names.join(', ') : '' });
     };
 
+    // Process tables in batches for checkpoint support
+    const interval = this.checkpointInterval;
+    let tablesSinceCheckpoint = 0;
+
     const tasks = tables.map((tableInfo) =>
       limit(async () => {
         const tableName = tableInfo.table_name;
@@ -214,10 +276,18 @@ export class Profiler {
         const estimated = tableInfo.estimated_rows;
         const prevKey = `${schema}.${tableName}`;
 
+        // Checkpoint resume: skip already completed tables
+        // pbar.increment() yapma — startValue'da zaten sayildi
+        if (completedTables.has(prevKey)) {
+          return null;
+        }
+
         activeTables.add(tableName);
         updatePostfix();
 
         try {
+          let result: TableProfile | null = null;
+
           // Incremental: check if table changed since baseline
           if (prevTableMap?.has(prevKey)) {
             const prev = prevTableMap.get(prevKey)!;
@@ -227,26 +297,39 @@ export class Profiler {
             const colMeta = metadata.get(tableName) ?? [];
 
             if (rc.row_count === prev.row_count && colMeta.length === prev.column_count) {
-              const carried: TableProfile = {
+              result = {
                 ...prev,
                 estimated_rows: estimated,
                 incremental_status: 'unchanged',
               };
               logger.info(`[${prevKey}] Degisiklik yok, onceki profil tasindi.`);
-              return carried;
             }
           }
 
-          const tableProf = await this.connector.withConnection(async (conn) => {
-            return this.profileTable(conn, schema, tableName, tableType, estimated, metadata);
-          });
+          if (!result) {
+            result = await this.connector.withConnection(async (conn) => {
+              return this.profileTable(conn, schema, tableName, tableType, estimated, metadata, tableInfo.table_description);
+            });
 
-          // Mark incremental status
-          if (prevTableMap) {
-            tableProf.incremental_status = prevTableMap.has(prevKey) ? 'changed' : 'new';
+            // Mark incremental status
+            if (prevTableMap) {
+              result.incremental_status = prevTableMap.has(prevKey) ? 'changed' : 'new';
+            }
           }
 
-          return tableProf;
+          // Immediately track completed table for checkpoint
+          schemaProf.tables.push(result);
+          schemaProf.total_rows += result.row_count;
+          schemaProf.total_size_bytes += result.table_size_bytes ?? 0;
+          completedTables.add(prevKey);
+          tablesSinceCheckpoint++;
+
+          if (tablesSinceCheckpoint >= interval) {
+            this.checkpointManager.save(dbProfile, completedTables);
+            tablesSinceCheckpoint = 0;
+          }
+
+          return result;
         } catch (e) {
           logger.error(`[${schema}.${tableName}] Tablo profilleme hatasi: ${e}`);
           return null;
@@ -258,15 +341,7 @@ export class Profiler {
       }),
     );
 
-    const results = await Promise.all(tasks);
-
-    for (const tableProf of results) {
-      if (tableProf) {
-        schemaProf.tables.push(tableProf);
-        schemaProf.total_rows += tableProf.row_count;
-        schemaProf.total_size_bytes += tableProf.table_size_bytes ?? 0;
-      }
-    }
+    await Promise.all(tasks);
 
     schemaProf.total_size_display = formatSize(schemaProf.total_size_bytes);
 
@@ -279,7 +354,6 @@ export class Profiler {
         scoredTables.reduce((s, t) => s + t.table_quality_score, 0) / scoredTables.length;
     }
 
-    return schemaProf;
   }
 
   private async fetchSchemaMetadata(
@@ -337,6 +411,7 @@ export class Profiler {
     tableType: string,
     estimatedRows: number,
     metadata: Map<string, Record<string, unknown>[]>,
+    tableDescription?: string | null,
   ): Promise<TableProfile> {
     const startTime = Date.now();
 
@@ -352,11 +427,14 @@ export class Profiler {
 
     // Column metadata
     const colMeta = metadata.get(table) ?? [];
+    const tableDesc = tableDescription
+      ?? (colMeta[0]?.table_description != null ? String(colMeta[0].table_description) : null);
     if (colMeta.length === 0) {
       return {
         schema_name: schema,
         table_name: table,
         table_type: tableType,
+        description: null,
         row_count: rowCount,
         estimated_rows: estimatedRows,
         row_count_estimated: rowEstimated,
@@ -402,6 +480,7 @@ export class Profiler {
       schema_name: schema,
       table_name: table,
       table_type: tableType,
+      description: tableDesc,
       row_count: rowCount,
       estimated_rows: estimatedRows,
       row_count_estimated: rowEstimated,

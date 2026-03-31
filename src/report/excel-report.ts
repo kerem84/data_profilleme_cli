@@ -145,7 +145,7 @@ export class ExcelReportGenerator {
     const ws = wb.addWorksheet('Tablo Profil');
     const hasIncremental = profile.incremental?.enabled;
     const headers = [
-      'Sema', 'Tablo', 'Tip', 'Satir Sayisi', 'Tahmini', 'Boyut',
+      'Sema', 'Tablo', 'Aciklama', 'Tip', 'Satir Sayisi', 'Tahmini', 'Boyut',
       'Kolon Sayisi', 'Sampling', 'Sample %',
       'Kalite Skoru', 'Kalite Notu', 'Sure (sn)',
       ...(hasIncremental ? ['Durum'] : []),
@@ -166,24 +166,25 @@ export class ExcelReportGenerator {
     let r = 2;
     for (const schema of profile.schemas) {
       for (const table of schema.tables) {
-        const colCount = hasIncremental ? 13 : 12;
+        const colCount = hasIncremental ? 14 : 13;
         ws.getRow(r).getCell(1).value = table.schema_name;
         ws.getRow(r).getCell(2).value = table.table_name;
-        ws.getRow(r).getCell(3).value = table.table_type;
-        ws.getRow(r).getCell(4).value = table.row_count;
-        ws.getRow(r).getCell(5).value = table.row_count_estimated ? 'Evet' : 'Hayir';
-        ws.getRow(r).getCell(6).value = table.table_size_display || '-';
-        ws.getRow(r).getCell(7).value = table.column_count;
-        ws.getRow(r).getCell(8).value = table.sampled ? 'Evet' : 'Hayir';
-        ws.getRow(r).getCell(9).value = table.sample_percent ?? '';
-        ws.getRow(r).getCell(10).value = Math.round(table.table_quality_score * 10000) / 10000;
-        const gradeCell = ws.getRow(r).getCell(11);
+        ws.getRow(r).getCell(3).value = table.description ?? '';
+        ws.getRow(r).getCell(4).value = table.table_type;
+        ws.getRow(r).getCell(5).value = table.row_count;
+        ws.getRow(r).getCell(6).value = table.row_count_estimated ? 'Evet' : 'Hayir';
+        ws.getRow(r).getCell(7).value = table.table_size_display || '-';
+        ws.getRow(r).getCell(8).value = table.column_count;
+        ws.getRow(r).getCell(9).value = table.sampled ? 'Evet' : 'Hayir';
+        ws.getRow(r).getCell(10).value = table.sample_percent ?? '';
+        ws.getRow(r).getCell(11).value = Math.round(table.table_quality_score * 10000) / 10000;
+        const gradeCell = ws.getRow(r).getCell(12);
         gradeCell.value = table.table_quality_grade;
         gradeCell.fill = GRADE_FILLS[table.table_quality_grade] ?? GRADE_FILLS['F'];
-        ws.getRow(r).getCell(12).value = table.profile_duration_sec;
+        ws.getRow(r).getCell(13).value = table.profile_duration_sec;
 
         if (hasIncremental && table.incremental_status) {
-          const statusCell = ws.getRow(r).getCell(13);
+          const statusCell = ws.getRow(r).getCell(14);
           statusCell.value = STATUS_LABELS[table.incremental_status] ?? table.incremental_status;
 
           // Color unchanged rows with dim background
@@ -206,7 +207,7 @@ export class ExcelReportGenerator {
   private writeColumnProfile(wb: ExcelJS.Workbook, profile: DatabaseProfile): void {
     const ws = wb.addWorksheet('Kolon Profil');
     const headers = [
-      'Sema', 'Tablo', 'Kolon', 'Sira', 'Veri Tipi', 'Max Uzunluk',
+      'Sema', 'Tablo', 'Kolon', 'Aciklama', 'Sira', 'Veri Tipi', 'Max Uzunluk',
       'Nullable', 'PK', 'FK',
       'NULL Sayisi', 'NULL Orani', 'Distinct Sayisi', 'Distinct Orani',
       'Min', 'Max',
@@ -222,36 +223,37 @@ export class ExcelReportGenerator {
           ws.getRow(r).getCell(1).value = table.schema_name;
           ws.getRow(r).getCell(2).value = table.table_name;
           ws.getRow(r).getCell(3).value = col.column_name;
-          ws.getRow(r).getCell(4).value = col.ordinal_position;
-          ws.getRow(r).getCell(5).value = col.data_type;
-          ws.getRow(r).getCell(6).value = col.max_length ?? '';
-          ws.getRow(r).getCell(7).value = col.is_nullable;
-          ws.getRow(r).getCell(8).value = col.is_primary_key ? 'PK' : '';
-          ws.getRow(r).getCell(9).value = col.is_foreign_key ? 'FK' : '';
-          ws.getRow(r).getCell(10).value = col.null_count;
-          ws.getRow(r).getCell(11).value = col.null_ratio;
-          ws.getRow(r).getCell(12).value = col.distinct_count;
-          ws.getRow(r).getCell(13).value = col.distinct_ratio;
-          ws.getRow(r).getCell(14).value = col.min_value ?? '';
-          ws.getRow(r).getCell(15).value = col.max_value ?? '';
-          ws.getRow(r).getCell(16).value = col.mean ?? '';
-          ws.getRow(r).getCell(17).value = col.stddev ?? '';
-          ws.getRow(r).getCell(18).value = col.percentiles?.p25 ?? '';
-          ws.getRow(r).getCell(19).value = col.percentiles?.p50 ?? '';
-          ws.getRow(r).getCell(20).value = col.percentiles?.p75 ?? '';
-          ws.getRow(r).getCell(21).value = Math.round(col.quality_score * 10000) / 10000;
-          const gradeCell = ws.getRow(r).getCell(22);
+          ws.getRow(r).getCell(4).value = col.description ?? '';
+          ws.getRow(r).getCell(5).value = col.ordinal_position;
+          ws.getRow(r).getCell(6).value = col.data_type;
+          ws.getRow(r).getCell(7).value = col.max_length ?? '';
+          ws.getRow(r).getCell(8).value = col.is_nullable;
+          ws.getRow(r).getCell(9).value = col.is_primary_key ? 'PK' : '';
+          ws.getRow(r).getCell(10).value = col.is_foreign_key ? 'FK' : '';
+          ws.getRow(r).getCell(11).value = col.null_count;
+          ws.getRow(r).getCell(12).value = col.null_ratio;
+          ws.getRow(r).getCell(13).value = col.distinct_count;
+          ws.getRow(r).getCell(14).value = col.distinct_ratio;
+          ws.getRow(r).getCell(15).value = col.min_value ?? '';
+          ws.getRow(r).getCell(16).value = col.max_value ?? '';
+          ws.getRow(r).getCell(17).value = col.mean ?? '';
+          ws.getRow(r).getCell(18).value = col.stddev ?? '';
+          ws.getRow(r).getCell(19).value = col.percentiles?.p25 ?? '';
+          ws.getRow(r).getCell(20).value = col.percentiles?.p50 ?? '';
+          ws.getRow(r).getCell(21).value = col.percentiles?.p75 ?? '';
+          ws.getRow(r).getCell(22).value = Math.round(col.quality_score * 10000) / 10000;
+          const gradeCell = ws.getRow(r).getCell(23);
           gradeCell.value = col.quality_grade;
           gradeCell.fill = GRADE_FILLS[col.quality_grade] ?? GRADE_FILLS['F'];
-          ws.getRow(r).getCell(23).value = col.quality_flags.join(', ');
+          ws.getRow(r).getCell(24).value = col.quality_flags.join(', ');
 
           // PK/FK row highlighting
           if (col.is_primary_key) {
-            for (let c = 1; c <= 23; c++) ws.getRow(r).getCell(c).fill = PK_FILL;
+            for (let c = 1; c <= 24; c++) ws.getRow(r).getCell(c).fill = PK_FILL;
           } else if (col.is_foreign_key) {
-            for (let c = 1; c <= 23; c++) ws.getRow(r).getCell(c).fill = FK_FILL;
+            for (let c = 1; c <= 24; c++) ws.getRow(r).getCell(c).fill = FK_FILL;
           }
-          for (let c = 1; c <= 23; c++) ws.getRow(r).getCell(c).border = THIN_BORDER;
+          for (let c = 1; c <= 24; c++) ws.getRow(r).getCell(c).border = THIN_BORDER;
           r++;
         }
       }
