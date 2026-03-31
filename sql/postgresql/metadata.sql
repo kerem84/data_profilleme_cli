@@ -18,22 +18,21 @@ SELECT
     fk.referenced_schema,
     fk.referenced_table,
     fk.referenced_column,
-    pgd.description AS column_description,
-    tgd.description AS table_description
+    col_desc.description AS column_description,
+    tbl_desc.description AS table_description
 FROM information_schema.columns c
-LEFT JOIN pg_catalog.pg_statio_all_columns psa
-    ON psa.schemaname = c.table_schema
-    AND psa.tablename = c.table_name
-    AND psa.attname = c.column_name
-LEFT JOIN pg_catalog.pg_description pgd
-    ON pgd.objoid = psa.relid
-    AND pgd.objsubid = c.ordinal_position
 LEFT JOIN pg_catalog.pg_class tbl
     ON tbl.relname = c.table_name
-    AND tbl.relnamespace = (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = c.table_schema)
-LEFT JOIN pg_catalog.pg_description tgd
-    ON tgd.objoid = tbl.oid
-    AND tgd.objsubid = 0
+    AND tbl.relnamespace = (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = c.table_schema LIMIT 1)
+LEFT JOIN pg_catalog.pg_attribute att
+    ON att.attrelid = tbl.oid
+    AND att.attname = c.column_name
+LEFT JOIN pg_catalog.pg_description col_desc
+    ON col_desc.objoid = tbl.oid
+    AND col_desc.objsubid = att.attnum
+LEFT JOIN pg_catalog.pg_description tbl_desc
+    ON tbl_desc.objoid = tbl.oid
+    AND tbl_desc.objsubid = 0
 LEFT JOIN (
     SELECT
         n.nspname   AS table_schema,
