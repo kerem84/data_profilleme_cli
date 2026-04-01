@@ -1,6 +1,6 @@
 -- HANA BW metadata: kolon bilgisi + BW aciklamalari
 -- Value params: ? (lang_code), ? (schema_name)
--- RSDIOBJT.IOBJNM /BIC/ prefix'siz tutulur, JOIN'de REPLACE ile cikarilir
+-- RSDIOBJT.IOBJNM /BIC/ ve SID_ prefix'siz tutulur, JOIN'de REPLACE ile cikarilir
 SELECT
     c.TABLE_NAME                                          AS table_name,
     c.COLUMN_NAME                                         AS column_name,
@@ -25,7 +25,7 @@ LEFT JOIN (
     AND pk.TABLE_NAME = c.TABLE_NAME
     AND pk.COLUMN_NAME = c.COLUMN_NAME
 LEFT JOIN RSDIOBJT dt
-    ON REPLACE(UPPER(c.COLUMN_NAME), '/BIC/', '') = dt.IOBJNM
+    ON REPLACE(REPLACE(UPPER(c.COLUMN_NAME), '/BIC/', ''), 'SID_', '') = dt.IOBJNM
     AND dt.OBJVERS = 'A'
     AND dt.LANGU = ?
 WHERE c.SCHEMA_NAME = ?
