@@ -100,10 +100,6 @@ export class Profiler {
       for (const t of checkpointData.completed_tables) {
         completedTables.add(t);
       }
-      // Restore partial profile schemas
-      for (const schema of checkpointData.partial_profile.schemas) {
-        dbProfile.schemas.push(schema);
-      }
       logger.info(
         `[${this.dbConfig.alias}] Checkpoint'ten devam ediliyor: ${completedTables.size} tablo atlanacak`,
       );
