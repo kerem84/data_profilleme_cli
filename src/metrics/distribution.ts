@@ -115,8 +115,8 @@ export class DistributionMetrics {
       }
 
       return result.rows.map((r) => ({
-        value: String(r.value ?? ''),
-        frequency: Number(r.frequency),
+        value: String(r.value ?? r.val ?? ''),
+        frequency: Number(r.frequency ?? r.freq ?? 0),
         pct: Number(r.pct),
       }));
     } catch (err) {

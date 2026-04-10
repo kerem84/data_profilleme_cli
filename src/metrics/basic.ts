@@ -60,7 +60,7 @@ export class BasicMetrics {
     try {
       let sqlText: string;
       if (this.dbType === 'access') {
-        const distinctExpr = `COUNT(DISTINCT [${column}])`;
+        const distinctExpr = `(SELECT COUNT(*) FROM (SELECT DISTINCT [${column}] FROM [${table}] WHERE [${column}] IS NOT NULL) AS t)`;
         sqlText = this.sql.load('null_ratio', {
           table_name: table,
           column_name: column,

@@ -1,6 +1,3 @@
--- Numerik istatistikler: ortalama, stddev
--- Identifier params: {table_name}, {column_name}
--- Not: Percentile hesabi Access SQL'de mumkun degil, Node.js-side yapilir
 SELECT
     AVG(CDbl({column_name})) AS mean_value,
     STDEV(CDbl({column_name})) AS stddev_value

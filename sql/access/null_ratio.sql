@@ -1,5 +1,3 @@
--- NULL orani ve distinct sayisi
--- Identifier params: {table_name}, {column_name}
 SELECT
     COUNT(*) AS total_count,
     COUNT({column_name}) AS non_null_count,
