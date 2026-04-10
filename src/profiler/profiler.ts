@@ -364,6 +364,19 @@ export class Profiler {
     const sqlText = this.sql.load('metadata');
     const metadata = new Map<string, Record<string, unknown>[]>();
 
+    // Access: metadata via ODBC API (no SQL catalog)
+    if (this.dbConfig.dbType === 'access') {
+      try {
+        const { AccessConnector } = await import('../connectors/access-connector.js');
+        const accessConn = this.connector as InstanceType<typeof AccessConnector>;
+        const tables = await this.connector.discoverTables(schema);
+        return await accessConn.getTableMetadataViaOdbc(tables.map((t) => t.table_name));
+      } catch (e) {
+        logger.warn(`[${schema}] Access metadata cekme hatasi: ${e}`);
+        return metadata;
+      }
+    }
+
     try {
       let result;
       if (this.dbConfig.dbType === 'mssql') {
