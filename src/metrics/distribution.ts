@@ -48,7 +48,7 @@ const HANA_NON_COMPARABLE = new Set([
 ]);
 
 const ACCESS_NON_COMPARABLE = new Set([
-  'oleobject', 'ole object', 'memo', 'hyperlink',
+  'oleobject', 'ole object', 'memo', 'longchar', 'longbinary', 'hyperlink',
 ]);
 
 /** Check if a column type is non-comparable (skip basic/topN/pattern metrics). */
