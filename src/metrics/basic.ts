@@ -97,4 +97,71 @@ export class BasicMetrics {
 
     return result;
   }
+
+  /**
+   * Lightweight basics: NULL count only (no DISTINCT).
+   * Used when distinct_count comes from system catalog.
+   */
+  async getColumnBasicsLite(
+    conn: DbConnection,
+    schema: string,
+    table: string,
+    column: string,
+    rowCount: number,
+  ): Promise<Record<string, unknown>> {
+    const logger = getLogger();
+    const result: Record<string, unknown> = {
+      total_count: rowCount,
+      non_null_count: 0,
+      null_count: rowCount,
+      null_ratio: 1.0,
+    };
+
+    if (rowCount === 0) return result;
+
+    try {
+      const sqlText = this.sql.load('null_ratio_lite', {
+        schema_name: schema,
+        table_name: table,
+        column_name: column,
+      });
+      const { rows } = await conn.query(sqlText);
+      const row = rows[0];
+      if (row) {
+        result.total_count = Number(row.total_count);
+        result.non_null_count = Number(row.non_null_count);
+        result.null_count = Number(row.null_count);
+        result.null_ratio = Number(row.null_ratio);
+      }
+    } catch (err) {
+      if (this.connector.isQueryTimeoutError(err)) {
+        logger.warn(`[${schema}.${table}.${column}] null_ratio_lite timeout`);
+      } else {
+        logger.warn(`[${schema}.${table}.${column}] null_ratio_lite hatasi: ${err}`);
+      }
+    }
+
+    // Min/max
+    try {
+      const sqlText = this.sql.load('min_max', {
+        schema_name: schema,
+        table_name: table,
+        column_name: column,
+      });
+      const { rows } = await conn.query(sqlText);
+      const row = rows[0];
+      if (row) {
+        result.min_value = row.min_value != null ? String(row.min_value) : null;
+        result.max_value = row.max_value != null ? String(row.max_value) : null;
+      }
+    } catch (err) {
+      if (this.connector.isQueryTimeoutError(err)) {
+        logger.warn(`[${schema}.${table}.${column}] min_max timeout`);
+      } else {
+        logger.warn(`[${schema}.${table}.${column}] min_max hatasi: ${err}`);
+      }
+    }
+
+    return result;
+  }
 }

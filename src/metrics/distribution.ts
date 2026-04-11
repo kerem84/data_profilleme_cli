@@ -71,6 +71,7 @@ export class DistributionMetrics {
     column: string,
     topN: number,
     rowCount: number,
+    samplePct?: number | null,
   ): Promise<TopNValue[]> {
     const logger = getLogger();
     if (rowCount === 0) return [];
@@ -81,6 +82,7 @@ export class DistributionMetrics {
         table_name: table,
         column_name: column,
       });
+      sqlText = sqlText.replaceAll('{sample_clause}', samplePct ? `TABLESAMPLE SYSTEM (${Math.floor(samplePct)})` : '');
 
       let result;
       if (this.dbType === 'mssql') {
@@ -119,14 +121,16 @@ export class DistributionMetrics {
     schema: string,
     table: string,
     column: string,
+    samplePct?: number | null,
   ): Promise<Record<string, number | null> | null> {
     const logger = getLogger();
     try {
-      const sqlText = this.sql.load('numeric_stats', {
+      let sqlText = this.sql.load('numeric_stats', {
         schema_name: schema,
         table_name: table,
         column_name: column,
       });
+      sqlText = sqlText.replaceAll('{sample_clause}', samplePct ? `TABLESAMPLE SYSTEM (${Math.floor(samplePct)})` : '');
       const { rows } = await conn.query(sqlText);
       const row = rows[0];
       if (row && row.mean_value != null) {
@@ -158,6 +162,7 @@ export class DistributionMetrics {
     table: string,
     column: string,
     buckets: number = 20,
+    samplePct?: number | null,
   ): Promise<HistogramBucket[] | null> {
     const logger = getLogger();
     try {
@@ -166,8 +171,9 @@ export class DistributionMetrics {
         table_name: table,
         column_name: column,
       });
-      // {buckets} literal substitution
+      // {buckets} and {sample_clause} literal substitution
       sqlText = sqlText.replaceAll('{buckets}', String(Math.floor(buckets)));
+      sqlText = sqlText.replaceAll('{sample_clause}', samplePct ? `TABLESAMPLE SYSTEM (${Math.floor(samplePct)})` : '');
 
       const { rows } = await conn.query(sqlText);
       return rows.map((r) => ({

@@ -100,13 +100,18 @@ export class Profiler {
       for (const t of checkpointData.completed_tables) {
         completedTables.add(t);
       }
-      // Restore partial profile schemas
-      for (const schema of checkpointData.partial_profile.schemas) {
-        dbProfile.schemas.push(schema);
-      }
       logger.info(
         `[${this.dbConfig.alias}] Checkpoint'ten devam ediliyor: ${completedTables.size} tablo atlanacak`,
       );
+    }
+
+    const checkpointTableMap = new Map<string, TableProfile>();
+    if (checkpointData) {
+      for (const s of checkpointData.partial_profile.schemas) {
+        for (const t of s.tables) {
+          checkpointTableMap.set(`${s.schema_name}.${t.table_name}`, t);
+        }
+      }
     }
 
     if (!(await this.connector.testConnection())) {
@@ -181,6 +186,22 @@ export class Profiler {
         tables: [],
         schema_quality_score: 0,
       };
+
+      // Restore completed tables from checkpoint into fresh schema
+      if (completedTables.size > 0) {
+        for (const t of tables) {
+          const key = `${schema}.${t.table_name}`;
+          if (completedTables.has(key)) {
+            const prev = checkpointTableMap.get(key);
+            if (prev) {
+              schemaProf.tables.push(prev);
+              schemaProf.total_rows += prev.row_count;
+              schemaProf.total_size_bytes += prev.table_size_bytes ?? 0;
+            }
+          }
+        }
+      }
+
       dbProfile.schemas.push(schemaProf);
 
       await this.profileSchema(schema, tables, pbar, completedTables, schemaProf, dbProfile, prevTableMap);
@@ -453,12 +474,15 @@ export class Profiler {
       };
     }
 
+    // Catalog-level column stats (HANA M_CS_COLUMNS etc.)
+    const catalogStats = await this.connector.getColumnStatsFromCatalog(conn, schema, table);
+
     const columns: ColumnProfile[] = [];
     const logger = getLogger();
 
     for (const cm of colMeta) {
       try {
-        const colProf = await this.profileColumn(conn, schema, table, cm, rowCount);
+        const colProf = await this.profileColumn(conn, schema, table, cm, rowCount, catalogStats, samplePct);
         columns.push(colProf);
       } catch (e) {
         logger.warn(`[${schema}.${table}.${cm.column_name ?? '?'}] Kolon profilleme hatasi: ${e}`);
@@ -505,6 +529,8 @@ export class Profiler {
     table: string,
     colMeta: Record<string, unknown>,
     rowCount: number,
+    catalogStats?: Map<string, { distinct_count: number }> | null,
+    samplePct?: number | null,
   ): Promise<ColumnProfile> {
     const colName = String(colMeta.column_name);
     const dataType = String(colMeta.data_type);
@@ -524,24 +550,35 @@ export class Profiler {
       return colProf;
     }
 
-    // Basic metrics
-    const basics = await this.basic.getColumnBasics(conn, schema, table, colName, rowCount);
+    // Basic metrics — use catalog stats for distinct if available
+    const hasCatalogDistinct = catalogStats?.has(colName) ?? false;
+    const basics = hasCatalogDistinct
+      ? await this.basic.getColumnBasicsLite(conn, schema, table, colName, rowCount)
+      : await this.basic.getColumnBasics(conn, schema, table, colName, rowCount);
+
     colProf.null_count = Number(basics.null_count);
     colProf.null_ratio = Number(basics.null_ratio);
-    colProf.distinct_count = Number(basics.distinct_count);
-    colProf.distinct_ratio = Number(basics.distinct_ratio);
+
+    if (hasCatalogDistinct) {
+      const catDistinct = catalogStats!.get(colName)!.distinct_count;
+      colProf.distinct_count = catDistinct;
+      colProf.distinct_ratio = rowCount > 0 ? Math.round((catDistinct / rowCount) * 1e6) / 1e6 : 0;
+    } else {
+      colProf.distinct_count = Number(basics.distinct_count);
+      colProf.distinct_ratio = Number(basics.distinct_ratio);
+    }
     colProf.min_value = basics.min_value != null ? String(basics.min_value) : null;
     colProf.max_value = basics.max_value != null ? String(basics.max_value) : null;
 
     // Top N values
     colProf.top_n_values = await this.distribution.getTopN(
       conn, schema, table, colName,
-      this.profConfig.topNValues, rowCount,
+      this.profConfig.topNValues, rowCount, samplePct,
     );
 
     // Numeric specific
     if (isNumericType(dataType)) {
-      const stats = await this.distribution.getNumericStats(conn, schema, table, colName);
+      const stats = await this.distribution.getNumericStats(conn, schema, table, colName, samplePct);
       if (stats) {
         colProf.mean = stats.mean ?? null;
         colProf.stddev = stats.stddev ?? null;
@@ -553,12 +590,12 @@ export class Profiler {
         }
       }
 
-      colProf.histogram = await this.distribution.getHistogram(conn, schema, table, colName);
+      colProf.histogram = await this.distribution.getHistogram(conn, schema, table, colName, 20, samplePct);
 
       // Outlier detection
       const outlierResult = await this.outlier.detect(
         conn, schema, table, colName,
-        this.profConfig.outlierIqrMultiplier,
+        this.profConfig.outlierIqrMultiplier, samplePct,
       );
       if (outlierResult) {
         colProf.outlier_count = outlierResult.outlier_count;

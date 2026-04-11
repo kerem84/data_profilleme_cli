@@ -116,4 +116,84 @@ describe('Checkpoint resume flow', () => {
     expect(toSkip).toEqual(['T2', 'T3']);
     expect(toProfile).toEqual(['T4']);
   });
+
+  it('resume merges checkpoint tables into fresh schema', () => {
+    // Simulate: checkpoint has 3 completed tables for SAPABAP1
+    const profile = makeProfile('sap_bw', 'SAPABAP1', ['T1', 'T2', 'T3']);
+    const completed = new Set(['SAPABAP1.T1', 'SAPABAP1.T2', 'SAPABAP1.T3']);
+    mgr.save(profile, completed);
+
+    // --- Resume begins ---
+    const ckpt = mgr.load('sap_bw')!;
+    const resumedCompleted = new Set(ckpt.completed_tables);
+
+    // Build a lookup of checkpoint tables keyed by "schema.table"
+    const checkpointTableMap = new Map<string, typeof ckpt.partial_profile.schemas[0]['tables'][0]>();
+    for (const s of ckpt.partial_profile.schemas) {
+      for (const t of s.tables) {
+        checkpointTableMap.set(`${s.schema_name}.${t.table_name}`, t);
+      }
+    }
+
+    // Simulate the schema loop: create fresh schema (this is what profiler.ts does)
+    const allTables = ['T1', 'T2', 'T3', 'T4', 'T5'];
+    const schemaProf = {
+      schema_name: 'SAPABAP1',
+      table_count: allTables.length,
+      total_rows: 0,
+      total_size_bytes: 0,
+      total_size_display: '0 B',
+      tables: [] as typeof ckpt.partial_profile.schemas[0]['tables'],
+      schema_quality_score: 0,
+    };
+
+    // THE FIX pattern: restore checkpoint tables for skipped entries
+    for (const tName of allTables) {
+      const key = `SAPABAP1.${tName}`;
+      if (resumedCompleted.has(key)) {
+        const prev = checkpointTableMap.get(key);
+        if (prev) {
+          schemaProf.tables.push(prev);
+          schemaProf.total_rows += prev.row_count;
+          schemaProf.total_size_bytes += prev.table_size_bytes ?? 0;
+        }
+      }
+    }
+
+    // Simulate new tables being profiled (T4, T5)
+    for (const tName of ['T4', 'T5']) {
+      const newTable = {
+        schema_name: 'SAPABAP1',
+        table_name: tName,
+        table_type: 'BASE TABLE' as const,
+        description: null,
+        row_count: 200,
+        estimated_rows: 200,
+        row_count_estimated: false,
+        column_count: 3,
+        columns: [],
+        profiled_at: new Date().toISOString(),
+        profile_duration_sec: 1.0,
+        sampled: false,
+        sample_percent: null,
+        table_size_bytes: 2048,
+        table_size_display: '2.0 KB',
+        table_quality_score: 0.9,
+        table_quality_grade: 'A' as const,
+        dwh_mapped: false,
+        dwh_target_tables: [],
+      };
+      schemaProf.tables.push(newTable);
+      schemaProf.total_rows += newTable.row_count;
+      schemaProf.total_size_bytes += newTable.table_size_bytes ?? 0;
+    }
+
+    // ASSERT: all 5 tables present (3 from checkpoint + 2 new)
+    expect(schemaProf.tables).toHaveLength(5);
+    expect(schemaProf.tables.map((t) => t.table_name)).toEqual(['T1', 'T2', 'T3', 'T4', 'T5']);
+    // Checkpoint tables: 3 * 100 rows = 300, new tables: 2 * 200 = 400
+    expect(schemaProf.total_rows).toBe(700);
+    // Checkpoint tables: 3 * 1024 = 3072, new tables: 2 * 2048 = 4096
+    expect(schemaProf.total_size_bytes).toBe(7168);
+  });
 });
